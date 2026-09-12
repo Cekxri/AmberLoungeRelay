@@ -8,6 +8,7 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Cross-thread delegation reaches the other model now.** A message sent with `send_message_to_thread`
 - **A cut upstream stream is no longer reported as success.** The relay used to answer `response.completed`
   even when the upstream closed the stream without its terminal `finish` event, so a half-written answer
   arrived with no error at all. It now logs `Upstream stream ended without finish` and sends the client an

@@ -2465,6 +2465,18 @@ function repairToolCallPairs(messages) {
   return out;
 }
 
+// 繁中：跨對話委派（send_message_to_thread）進到目標對話時，是一筆沒有 call_id 的 function_call_output，
+// 內容包在 <codex_delegation> 裡。若照一般工具結果處理，孤兒修補會把它丟掉，目標對話的模型根本看不到，
+// 就會繼續回答上一則真人訊息（實測：指揮無效）。這裡把它轉成使用者訊息，委派才會真的生效。
+// English: a cross-thread delegation arrives as a function_call_output with no matching call. Treating it as a
+// tool result means the orphan repair drops it and the target model never sees it; converting it to a user
+// message is what makes multi-agent delegation actually work.
+function delegationToUserMessage(raw) {
+  const m = /<input>([\s\S]*?)<\/input>/.exec(String(raw || ''));
+  const body = (m ? m[1] : String(raw || '')).trim();
+  return '[Message from another task — treat this as a user instruction]' + '\n\n' + body;
+}
+
 function convertResponsesToChat(respReq) {
   const messages = [];
   // Images inside tool output must be inserted *after* the whole group of tool results;
@@ -2592,6 +2604,12 @@ function convertResponsesToChat(respReq) {
           flushPending();
           {
             const { text, images } = extractToolOutput(item);
+            // 繁中：沒有 call_id 的委派訊息 → 使用者訊息（否則會被孤兒修補丟掉）。
+            // English: a delegation with no call_id becomes a user message, not a droppable tool result.
+            if (!item.call_id && (item.name === 'send_message_to_thread' || /<codex_delegation>/.test(text))) {
+              messages.push({ role: 'user', content: delegationToUserMessage(text) });
+              break;
+            }
             messages.push({
               role: 'tool',
               tool_call_id: item.call_id || '',

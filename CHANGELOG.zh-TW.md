@@ -8,6 +8,7 @@
 
 ### 修正
 
+- **跨對話委派現在真的送得到另一個模型。** `send_message_to_thread` 的訊息在目標對話裡是一筆帶
 - **上游把串流切斷時，不再回報成功。** 以前即使上游沒送結尾的 `finish` 事件就斷線，代理照樣回
   `response.completed`，導致「輸出到一半卻沒有任何錯誤」。現在會記下 `Upstream stream ended without finish`，
   而且只要已經輸出過文字，就會送出 `error` 事件讓使用者看得見；每一輪的結束原因（`stop`、`length`…）也會寫進日誌。
