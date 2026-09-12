@@ -8,6 +8,9 @@
 
 ### 修正
 
+- **上游把串流切斷時，不再回報成功。** 以前即使上游沒送結尾的 `finish` 事件就斷線，代理照樣回
+  `response.completed`，導致「輸出到一半卻沒有任何錯誤」。現在會記下 `Upstream stream ended without finish`，
+  而且只要已經輸出過文字，就會送出 `error` 事件讓使用者看得見；每一輪的結束原因（`stop`、`length`…）也會寫進日誌。
 - **每次啟動都會留下日誌檔。** `scripts/start.cmd`（雙擊捷徑用的那支）原本只把輸出留在視窗裡，關掉就沒了；
   現在兩支啟動腳本都會預設把 `LOG_FILE` 指到 `logs/relay.log`（你自己有設定就照你的）。
 - **圖片與提示訊息不再切斷工具呼叫群組。** 同一輪呼叫多個工具時，App 會在結果之間插入 `<image_resize_notice>`

@@ -2821,6 +2821,9 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
   let usage = null;
   let textAcc = '';
   let finishReason = null;
+  // 繁中：上游正常結束一定會送 finish；沒收到就代表串流被切斷，不能假裝完成。
+  // English: a well-formed upstream stream always ends with `finish`; without it the stream was cut.
+  let sawFinish = false;
 
   const baseResponse = (status, output) => ({
     id: responseId, object: 'response', created_at: created, status,
@@ -2957,6 +2960,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
         }
 
         case 'finish': {
+          sawFinish = true;
           finishReason = event.finishReason || null;
           const u = event.totalUsage || event.usage || null;
           if (u) {
@@ -2983,6 +2987,16 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
       const out = closeItem();
       // finishReason=length means max_output_tokens truncated the answer: the spec requires status=incomplete
       const truncated = finishReason === 'length';
+      // 繁中：把「這一輪到底怎麼結束的」寫進日誌；上游沒送 finish 就斷線時，額外告訴使用者答案被切斷了，
+      // 不然畫面上只會看到輸出到一半、卻沒有任何錯誤（使用者回報過的情況）。
+      // English: log how the turn actually ended, and surface a cut stream instead of pretending success.
+      if (!sawFinish) {
+        log('warn', 'Upstream stream ended without finish', { textChars: textAcc.length, outputTokens: this.outputTokens || 0 });
+      } else if (truncated) {
+        log('warn', 'Answer truncated by max_output_tokens', { textChars: textAcc.length, outputTokens: this.outputTokens || 0 });
+      } else {
+        log('info', 'Upstream stream finished', { finishReason: finishReason || '(none)', outputTokens: this.outputTokens || 0, textChars: textAcc.length });
+      }
       out.push(sse(truncated ? 'response.incomplete' : 'response.completed', {
         response: Object.assign(baseResponse(truncated ? 'incomplete' : 'completed', doneItems.slice()), {
           output_text: textAcc,
@@ -2990,6 +3004,9 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
           usage: buildResponsesUsage(usage, this.outputTokens),
         }),
       }));
+      if (!sawFinish && textAcc.length > 0) {
+        out.push(this.errorEvent('Upstream stream ended early: the reply above is incomplete (the upstream closed the stream without a finish event). Send "continue" to carry on.'));
+      }
       return out;
     },
     fail(message) {

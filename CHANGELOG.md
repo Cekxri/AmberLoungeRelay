@@ -8,6 +8,11 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **A cut upstream stream is no longer reported as success.** The relay used to answer `response.completed`
+  even when the upstream closed the stream without its terminal `finish` event, so a half-written answer
+  arrived with no error at all. It now logs `Upstream stream ended without finish` and sends the client an
+  `error` event once text has already been streamed, so the truncation is visible. The finish reason of
+  every streamed turn (`stop`, `length`, …) is logged too.
 - **Every launch leaves a log file.** `scripts/start.cmd` (the one people double-click) kept its output in the
   console window only, so the log vanished when the window closed; both launchers now default `LOG_FILE` to
   `logs/relay.log` unless you set one yourself.
