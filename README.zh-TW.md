@@ -31,7 +31,7 @@ Amber Lounge Relay 是一個單檔、零外部依賴的反向代理。它把 Com
 ## 快速開始
 
 ```bash
-git clone https://github.com/<你的帳號>/amber-lounge-relay.git
+git clone https://github.com/Cekxri/AmberLoungeRelay.git
 cd amber-lounge-relay
 npm start        # 專案附的 config.json 會聽 http://0.0.0.0:3050
 ```
@@ -170,7 +170,7 @@ Cursor（或任何 OpenAI 相容工具）填 `http://127.0.0.1:3050/v1` 加上�
 
 ```bash
 docker compose up -d                        # 或 PROXY_PORT=13050 docker compose up -d
-docker build -t amber-lounge-relay:latest . # 想自己蓋也行
+docker build -t AmberLoungeRelay:latest . # 想自己蓋也行
 ```
 
 映像檔是輕量 `node:22-alpine`，聽 `3050`，內建 `/health` 健康檢查。

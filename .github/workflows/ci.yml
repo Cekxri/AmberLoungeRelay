@@ -1,0 +1,30 @@
+name: CI ~ syntax and sanity :3
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Node checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check
+        run: node --check proxy.mjs
+
+      - name: config.json parses
+        run: node -e "JSON.parse(require('fs').readFileSync('config.json','utf8')); console.log('config.json tastes fine :3')"
+
+      - name: The relay comes up and /health answers
+        run: |
+          HOST=127.0.0.1 PORT=3050 node proxy.mjs &
+          sleep 2
+          curl -fsS http://127.0.0.1:3050/health
+          echo " ~ the bar is open UwU"

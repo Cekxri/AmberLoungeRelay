@@ -8,8 +8,8 @@
   "scripts": {
     "start": "node proxy.mjs",
     "dev": "node --watch proxy.mjs",
-    "docker:build": "docker build -t amber-lounge-relay:latest .",
-    "docker:build:multi": "docker buildx build --platform linux/amd64,linux/arm64 -t amber-lounge-relay:latest ."
+    "docker:build": "docker build -t AmberLoungeRelay:latest .",
+    "docker:build:multi": "docker buildx build --platform linux/amd64,linux/arm64 -t AmberLoungeRelay:latest ."
   },
   "engines": {
     "node": ">=18.0.0"

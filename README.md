@@ -33,7 +33,7 @@ brewed over far too many late nights and with a healthy respect for other people
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-name>/amber-lounge-relay.git
+git clone https://github.com/Cekxri/AmberLoungeRelay.git
 cd amber-lounge-relay
 npm start        # config.json ships listening on http://0.0.0.0:3050
 ```
@@ -178,7 +178,7 @@ and feeds the results back to the model. More notes in [docs/tool-namespaces.md]
 
 ```bash
 docker compose up -d                       # or: PROXY_PORT=13050 docker compose up -d
-docker build -t amber-lounge-relay:latest . # if you prefer building by hand
+docker build -t AmberLoungeRelay:latest . # if you prefer building by hand
 ```
 
 The image is a slim `node:22-alpine`, listens on `3050`, and carries a healthcheck on `/health`.

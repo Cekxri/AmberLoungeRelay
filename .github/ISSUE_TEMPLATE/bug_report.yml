@@ -1,0 +1,46 @@
+name: Bug report
+description: Something is broken and the bar is on fire :3
+title: "[bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, what you got, and the exact error text if there is one.
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Which client?
+      description: Cursor, Claude Code, Codex App, an SDK, a curl call — whatever it was.
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: "node -v"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: >-
+        Tool entries, "Executed internal web tools", "Repaired incomplete tool history" and
+        "CC API error" lines are the useful ones. Please redact your API key — never paste it.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before you pour
+      options:
+        - label: I have checked /health and the relay is actually running.
+          required: true
+        - label: I have not pasted my API key anywhere in this issue.
+          required: true

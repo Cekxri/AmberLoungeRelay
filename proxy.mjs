@@ -18,7 +18,7 @@ import { readFileSync, existsSync, appendFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// ── 配置加载 ──────────────────────────────────────
+// ── Configuration loading ──────────────────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function loadConfig() {
@@ -32,7 +32,7 @@ function loadConfig() {
     useProviderModels: true,
     modelRefreshIntervalMs: 5 * 60 * 1000,  // 5 minutes
     zdr: false,
-    emptySystemPlaceholder: true, // 无 system prompt 时发空格占位，阻止 CC 上游注入 ~7.5K token 默认提示词（issue #17）
+    emptySystemPlaceholder: true, // send a space placeholder when there is no system prompt, so the upstream does not inject its ~7.5K-token default prompt (issue #17)
   };
 
   const configPath = resolve(__dirname, 'config.json');
@@ -45,7 +45,7 @@ function loadConfig() {
     }
   }
 
-  // 环境变量覆写
+  // Environment-variable overrides
   if (process.env.PORT) defaults.port = parseInt(process.env.PORT);
   if (process.env.HOST) defaults.host = process.env.HOST;
   if (process.env.CC_API_BASE) defaults.apiBase = process.env.CC_API_BASE;
@@ -60,8 +60,8 @@ function loadConfig() {
 
 const CFG = loadConfig();
 
-// ── 指纹生成（首次运行自动生成，写回 config.json） ──────
-// CPU 型号与核心数对应表（仅 Windows x64）
+// ── Fingerprint generation (created automatically on first run) ──
+// CPU model to core-count lookup (Windows x64 only)
 const FINGERPRINT_CPUS = [
   { model: '12th Gen Intel(R) Core(TM) i7-12650H', cores: 10 },
   { model: '12th Gen Intel(R) Core(TM) i5-12400F', cores: 6 },
@@ -86,7 +86,7 @@ const FINGERPRINT_TZS = [
   'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Seoul', 'Asia/Hong_Kong',
   'Australia/Sydney', 'Pacific/Auckland',
 ];
-const FINGERPRINT_MAC_COUNT_RANGE = [2, 3, 4, 5]; // 随机 2~5 个 MAC
+const FINGERPRINT_MAC_COUNT_RANGE = [2, 3, 4, 5]; // random 2–5 MAC addresses
 
 function generateFingerprint() {
   const cpuEntry = FINGERPRINT_CPUS[Math.floor(Math.random() * FINGERPRINT_CPUS.length)];
@@ -105,7 +105,7 @@ function generateFingerprint() {
   const hostnameHash = sha256(randHex(16));
   const gitEmailHash = sha256(randHex(16));
 
-  // thumbmark = 所有组件的联合哈希
+  // thumbmark = a combined hash of every component
   const thumbData = [machineIdHash, ...macHashes, osUserHash, hostnameHash, gitEmailHash, 'win32', '10.0.22631', cpuEntry.model, String(cpuEntry.cores), String(memGiB)].join('|');
   const thumbmark = sha256(thumbData);
 
@@ -133,9 +133,9 @@ function generateFingerprint() {
 
 let CC_VERSION = '0.32.3';
 const CC_VERSION_FALLBACK = '0.32.3';
-const CC_VERSION_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h — npm registry 刷新间隔
+const CC_VERSION_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h — npm registry refresh interval
 
-// ── 动态 CC 版本号（从 npm registry 拉取） ─────────────
+// ── Dynamic CC version number (fetched from the npm registry) ──
 async function refreshCCVersion() {
   try {
     const url = 'https://registry.npmjs.org/command-code/latest';
@@ -150,63 +150,63 @@ async function refreshCCVersion() {
     log('warn', 'CC Version fetch failed, using current', { version: CC_VERSION, error: e.message });
   }
 }
-refreshCCVersion(); // 启动时立即拉取
+refreshCCVersion(); // fetch straight away on start-up
 setInterval(refreshCCVersion, CC_VERSION_REFRESH_MS);
 
-// 请求体大小上限：默认 100MB，可用环境变量 CC_MAX_BODY_MB 覆盖（正整数，单位 MB）
-// ⚠️ 内存特性（issue #20 实测）：请求体在转发到上游前会同时存在多份副本 ——
-//    chunks[] / Buffer.concat / utf8 字符串 / JSON.parse 对象树 / buildCcRequest 重建对象树 / JSON.stringify 序列化体。
-//    实测峰值 ≈ body 大小 × 5.1~7.4（7MB→+52MB，20MB→+116MB；而 413 拒绝路径只要 ×1.05）。
-//    故 100MB 上限意味着「单个请求」最坏可吃 ~550MB，且该上限是每请求的、不是全局的。
-//    公网/多用户部署请在反向代理层同时限制 body 大小与在途请求数（见 README「内存与部署」）。
+// Request body cap: 100MB by default, overridable with CC_MAX_BODY_MB (a positive integer, in MB)
+// ⚠️ Memory behaviour (measured in issue #20): the body exists in several copies before it reaches upstream —
+//    chunks[] / Buffer.concat / utf8 string / JSON.parse object tree / the tree rebuilt by buildCcRequest / the JSON.stringify payload.
+//    Measured peak ≈ body size × 5.1–7.4 (7MB→+52MB, 20MB→+116MB; a rejected 413 costs only ×1.05).
+//    A 100MB cap therefore means one request can cost ~550MB at worst, and the cap is per request, not global.
+//    For public or multi-user deployments, cap both body size and in-flight count at your reverse proxy (see the README).
 const MAX_BODY_SIZE = (() => {
   const mb = Number.parseInt(process.env.CC_MAX_BODY_MB ?? '', 10);
   return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 100 * 1024 * 1024;
 })();
-// 上游读空闲超时（issue #19）：只计「reader.read() 的等待」，每收到一个 chunk 重置，
-// 不是整个请求的总时长。默认值保持不变（30s / 90s），可用环境变量覆盖 ——
-// 官方 CLI 对上游没有任何 idle timeout（反编译 command-code@1.50.0 已验证，
-// createApiClient 调用点均未传 timeout），合法的长思考停顿可达数百秒，
-// 遇到推理模型被 30s 误杀 / 触发 429 重试放大时，调大这两个值即可。
+// Upstream read-idle timeout (issue #19): counts only the time spent waiting in reader.read(), reset on every chunk —
+// not the total duration of the request. The defaults are unchanged (30s / 90s) and can be overridden by environment variable —
+// the official CLI has no upstream idle timeout at all (verified by decompiling command-code@1.50.0:
+// every createApiClient call site passes no timeout), and legitimate thinking stalls can run for hundreds of seconds.
+// If a reasoning model is killed at 30s and triggers an amplified 429 retry loop, raise these two values.
 const STREAM_IDLE_TIMEOUT_MS = (() => {
   const ms = Number.parseInt(process.env.CC_STREAM_IDLE_MS ?? '', 10);
-  return Number.isFinite(ms) && ms > 0 ? ms : 30000;   // 默认 30s — 流式无新数据中断
+  return Number.isFinite(ms) && ms > 0 ? ms : 30000;   // default 30s — abort a stream only when no new data arrives
 })();
 const NONSTREAM_IDLE_TIMEOUT_MS = (() => {
   const ms = Number.parseInt(process.env.CC_NONSTREAM_IDLE_MS ?? '', 10);
-  return Number.isFinite(ms) && ms > 0 ? ms : 90000;   // 默认 90s — 非流式超时更宽容
+  return Number.isFinite(ms) && ms > 0 ? ms : 90000;   // default 90s — a more forgiving window for non-streaming
 })();
 
-// 客户端「僵死」保护：既不读也不断开时，该请求会连带上游连接一直挂着（背压修复后的残留）。
-// 实测残留在途成本约 5MB/连接 —— 有界、不泄漏、断开即回收，但连接数本身无上限。
-// 默认 0 = 禁用，保持既有行为不变：僵死客户端与「卡在工具执行的合法客户端」在协议层无法
-// 区分，而官方 CLI 对上游没有任何 idle timeout（issue #19），贸然加超时会误杀健康请求。
-// 在途请求上限（可选，默认关闭）。项目定位是纯反代层，并发控制属于下游（nginx
-// limit_conn，per-IP / per-key）；本项仅为「不挂反代裸跑」的场景提供一个可选的
-// 进程内全局兜底，不替代下游方案，也不感知客户端身份。
-// 内存 = 在途数 × (0.13MB + 5.5 × body_MB)：body 上限只管住单请求量级，乘数由本项封顶。
-// 超限返回 503 + Retry-After（SDK 会自行退避重试），而不是放任进程被 OOM 杀掉。
-// 默认 0 = 关闭，不限制并发（既有的反代层定位不变，行为零变化）；需要时按需开启：
+// Stalled-client guard: a client that neither reads nor disconnects keeps its request (and the upstream connection) hanging —
+// the residue left behind after the backpressure fix. Measured cost is ~5MB per connection: bounded, no leak, reclaimed on
+// disconnect — but the number of connections is itself unbounded. Default 0 = disabled, so existing behaviour is unchanged:
+// a stalled client cannot be told apart, at the protocol level, from a legitimate client blocked on tool execution, and
+// the official CLI has no upstream idle timeout at all (issue #19), so a rushed timeout would kill healthy requests.
+// downstream (nginx limit_conn, per-IP / per-key). This option merely offers an in-process global
+// backstop for running without a reverse proxy; it does not replace the downstream approach, nor does it know who the client is.
+// Memory = in-flight × (0.13MB + 5.5 × body_MB): the body cap bounds one request, this bounds the multiplier.
+// Over the limit it answers 503 + Retry-After (SDKs back off and retry) instead of letting the process be OOM-killed.
+// Default 0 = off, no concurrency limit (behaviour unchanged); switch it on when you want it:
 //   CC_MAX_INFLIGHT=32 npm start
-// 注意：body 上限只管住单请求量级，乘数由本项封顶。默认 body 上限 100MB 时，
-// N × 最坏 550MB —— 要硬性内存上界需同时下调 CC_MAX_BODY_MB。
+// Note: the body cap only bounds a single request; this option caps the multiplier. With the default 100MB body cap that is
+// N × 550MB worst case — for a hard memory ceiling, lower CC_MAX_BODY_MB as well.
 const MAX_INFLIGHT = (() => {
   const n = Number.parseInt(process.env.CC_MAX_INFLIGHT ?? '', 10);
-  return Number.isFinite(n) && n > 0 ? n : 0;            // 默认 0 = 不限
+  return Number.isFinite(n) && n > 0 ? n : 0;            // default 0 = unlimited
 })();
 
-let inflightCount = 0;   // 当前在途请求数（不含 /health）
+let inflightCount = 0;   // current in-flight requests (excluding /health)
 
 const CLIENT_DRAIN_TIMEOUT_MS = (() => {
   const ms = Number.parseInt(process.env.CC_CLIENT_DRAIN_TIMEOUT_MS ?? '', 10);
   return Number.isFinite(ms) && ms > 0 ? ms : 0;
 })();
 
-// 连续超时计数：连续 3 次超时才提醒压缩上下文，任意成功请求后重置
+// Consecutive-timeout counter: warn about reducing context only after three in a row; any success resets it
 let consecutiveTimeouts = 0;
 const TIMEOUT_REDUCE_CONTEXT_THRESHOLD = 3;
 
-// ── 日志 ─────────────────────────────────────────────
+// ── Logging ─────────────────────────────────────────
 function log(level, msg, data) {
   const line = `[${new Date().toISOString()}] [${level}] ${msg}${data ? ' ' + JSON.stringify(data) : ''}`;
   console.log(line);
@@ -215,11 +215,11 @@ function log(level, msg, data) {
   }
 }
 
-// ── 会话管理 ───────────────────────────────────────
-// 每个 API Key 独立一个 session，12h 过期 + 1h 随机抖动
-// 同一 Key 在同一周期内复用，到期自动换新
+// ── Session management ──────────────────────────────
+// One session per API key, expiring after 12h plus up to 1h of random jitter
+// The same key reuses its session within a cycle and gets a fresh one when it lapses
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;    // 12h
-const SESSION_JITTER_MS  = 60 * 60 * 1000;           // 1h 抖动范围
+const SESSION_JITTER_MS  = 60 * 60 * 1000;           // up to 1h of jitter
 
 const sessionStore = new Map(); // apiKey → { sessionId, expiresAt }
 
@@ -231,7 +231,7 @@ function ensureSession(apiKey) {
     return entry.sessionId;
   }
 
-  // 过期或第一次：生成新 session
+  // Expired, or the first time: mint a new session
   const jitter = Math.floor(Math.random() * SESSION_JITTER_MS);
   const sessionId = randomUUID();
   sessionStore.set(apiKey, { sessionId, expiresAt: now + SESSION_DURATION_MS + jitter });
@@ -239,22 +239,22 @@ function ensureSession(apiKey) {
   return sessionId;
 }
 
-// 定期清理过期 session 和 key 状态，防止 Map 无限增长
+// Periodically sweep expired sessions and key state so the Maps cannot grow without bound
 setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, entry] of sessionStore) {
     if (now >= entry.expiresAt) {
       sessionStore.delete(key);
-      keyStateStore.delete(key); // 同时清理该 key 的指纹状态
+      keyStateStore.delete(key); // drop this key’s fingerprint state too
       cleaned++;
     }
   }
   if (cleaned > 0) log('info', 'Session cleanup', { cleaned, remaining: sessionStore.size });
-}, 60 * 60 * 1000); // 每小时
+}, 60 * 60 * 1000); // hourly
 
 function getSessionId(incomingHeaders, apiKey, promptCacheKey) {
-  // 优先从客户端传来的 session 类 header 获取
+  // Prefer the session-ish headers sent by the client
   const candidates = [
     incomingHeaders['x-session-id'],
     incomingHeaders['x-claude-code-session-id'],
@@ -264,15 +264,15 @@ function getSessionId(incomingHeaders, apiKey, promptCacheKey) {
   for (const id of candidates) {
     if (id && typeof id === 'string' && id.length >= 8) return id;
   }
-  // 按 API Key 分 session
+  // One session per API key
   return ensureSession(apiKey);
 }
 
-// 每个请求独立 thread ID
+// A fresh thread ID for every request
 function newThreadId() { return randomUUID(); }
 
-// ── 每 Key 独立状态（fingerprint + 初始化节流） ──
-// 每个 API Key 拥有自己的设备指纹和初始化定时器
+// ── Per-key state (fingerprint + initialisation throttling) ──
+// Every API key gets its own device fingerprint and initialisation timer
 const keyStateStore = new Map(); // apiKey → { fingerprint, nextInitAt }
 
 function getOrCreateKeyState(apiKey) {
@@ -288,9 +288,9 @@ function getOrCreateKeyState(apiKey) {
   return state;
 }
 
-// ── 初始化预请求（fingerprint + lifecycle，首次 + 每 8h+2h 抖动） ────
+// ── Initialisation pre-requests (fingerprint + lifecycle; first run, then every 8h ± 2h) ──
 const INIT_REFRESH_MS = 8 * 60 * 60 * 1000;    // 8h
-const INIT_JITTER_MS  = 2 * 60 * 60 * 1000;    // 2h 抖动
+const INIT_JITTER_MS  = 2 * 60 * 60 * 1000;    // 2h of jitter
 
 async function ensureInitialized(apiKey, signal) {
   const state = getOrCreateKeyState(apiKey);
@@ -298,7 +298,7 @@ async function ensureInitialized(apiKey, signal) {
   if (now < state.nextInitAt) return;
 
   try {
-    // 并行发两个预请求
+    // Fire both pre-requests in parallel
     const headers = {
       'Content-Type': 'application/json',
       'x-cli-environment': 'production',
@@ -338,7 +338,7 @@ async function ensureInitialized(apiKey, signal) {
       }),
     ]);
 
-    // 成功：8h + 2h 随机抖动
+    // Success: 8h plus up to 2h of random jitter
     const jitter = Math.floor(Math.random() * INIT_JITTER_MS);
     state.nextInitAt = Date.now() + INIT_REFRESH_MS + jitter;
     log('info', 'Fingerprint/lifecycle next refresh', { nextIn: `${(INIT_REFRESH_MS + jitter) / 3600000}h` });
@@ -347,7 +347,7 @@ async function ensureInitialized(apiKey, signal) {
   }
 }
 
-// ── 模型列表 ───────────────────────────────────────
+// ── Model list ──────────────────────────────────────
 const MODELS = [
   // Anthropic
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
@@ -387,18 +387,18 @@ const MODELS = [
   { id: 'google/gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
 ];
 
-// ── 工具函数 ───────────────────────────────────────
+// ── Helper functions ────────────────────────────────
 
-// 从 sessionId 构造一个假的工作目录路径，再按真实 CLI 规则生成 slug
-// 结果形如 "d-users-dev-projects-web-app-a3f2" (和真实 CLI 的 slug 格式一致)
+// Build a fake working directory from the sessionId, then derive a slug using the real CLI’s rules
+// The result looks like "d-users-dev-projects-web-app-a3f2" (matching the real CLI’s slug format)
 function fakeProjectSlug(sessionId) {
   const names = ['app', 'api', 'backend', 'bot', 'cli', 'core', 'data', 'frontend',
     'lib', 'plugin', 'proxy', 'server', 'service', 'tool', 'web', 'worker'];
   const id = String(sessionId || '');
   const head = id.slice(0, 4);
-  // sessionId 既可能是随机 UUID（前 4 位十六进制），也可能是客户端自定义的
-  // prompt_cache_key（如 "my-stable-cache-key-001"）。后者按 16 进制解析得 NaN，
-  // 会让 slug 变成 "…-undefined-my-s"。失败时退化为确定性字符哈希。
+  // The sessionId is either a random UUID (first four characters hexadecimal) or a client-supplied
+  // prompt_cache_key (such as "my-stable-cache-key-001"). The latter parses as NaN in base 16, which would
+  // turn the slug into "…-undefined-my-s". Fall back to a deterministic character hash when that happens.
   let idx = parseInt(head, 16);
   if (!Number.isFinite(idx)) {
     let h = 0;
@@ -407,7 +407,7 @@ function fakeProjectSlug(sessionId) {
   }
   const name = names[idx % names.length];
   const suffix = head || '0000';
-  // 模拟一个类似 C:\Users\dev\projects\{name}-{suffix} 的路径
+  // Mimic a path such as C:\Users\dev\projects\{name}-{suffix}
   const path = `C:\\Users\\dev\\projects\\${name}-${suffix}`;
   return path
     .toLowerCase()
@@ -434,15 +434,15 @@ function getEnvironment() {
   return `${process.platform}-${process.arch}, Node.js ${process.version.slice(1)}`;
 }
 
-// ── CC 请求体构建 ─────────────────────────────────
+// ── CC request body construction ────────────────────
 
 function buildCcRequest(openaiReq) {
   const { model, messages, max_tokens, temperature, tools, stream, reasoning_effort, tool_choice, parallel_tool_calls, prompt_cache_key } = openaiReq;
 
-  // 提取系统提示，OpenAI 的 system 与 developer 均映射为系统提示
-  // 数组型 content 必须展开取 text 后拼成「字符串」，而不是转成 JSON 字符串，
-  // 更不能输出 Anthropic 风格的 content 块数组：CC 上游要求 params.system 恒为
-  // 字符串，传数组会被直接拒绝（真机验证：
+  // Extract the system prompt: OpenAI’s system and developer messages both map onto it
+  // Array-style content must be flattened to text and joined into a *string*, not turned into a JSON string,
+  // and certainly not emitted as an Anthropic-style content-block array: the upstream insists that
+  // params.system is always a string, and rejects arrays outright (verified against the live service:
   // Validation error: Invalid input: expected string, received array at "params.system"）。
   const systemMsgs = messages.filter(m => m.role === 'system' || m.role === 'developer');
   const systemPrompt = systemMsgs.map(m => {
@@ -464,18 +464,18 @@ function buildCcRequest(openaiReq) {
     }
   }
 
-  // 转换 messages 为 CC 格式
+  // Convert messages into CC format
   const ccMessages = chatMessages.map(msg => {
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') {
         return { role: 'user', content: [{ type: 'text', text: msg.content }] };
       }
-      // 多模态：数组 content 原样透传（text + image_url → CC image 格式）
+      // Multimodal: pass array content straight through (text + image_url → CC image format)
       if (Array.isArray(msg.content)) {
         const parts = msg.content.map(part => {
           if (part.type === 'image_url') {
             const url = part.image_url?.url || '';
-            // CC CLI 真实格式: { type: "image", image: "data:image/jpeg;base64,..." }
+            // The real CC CLI format: { type: "image", image: "data:image/jpeg;base64,..." }
             return { type: 'image', image: url };
           }
           return part;
@@ -486,9 +486,9 @@ function buildCcRequest(openaiReq) {
     }
     if (msg.role === 'assistant') {
       const parts = [];
-      // 思考内容必须回传：CC 在 thinking 模式下校验 reasoning 是否随历史带回，
-      // 丢弃会让上游直接拒绝。次序也必须与 CC CLI 的抓包格式一致 ——
-      // [reasoning, text, tool-call]，reasoning 在最前。
+      // Thinking content must travel back: in thinking mode CC verifies that reasoning comes with the history,
+      // and dropping it makes the upstream refuse the request. The order must match the CLI’s captured traffic —
+      // [reasoning, text, tool-call], with reasoning first.
       if (msg.reasoning_content) {
         parts.push({ type: 'reasoning', text: msg.reasoning_content });
       }
@@ -498,8 +498,8 @@ function buildCcRequest(openaiReq) {
         for (const part of msg.content) {
           if (!part) continue;
           if (part.type === 'text') parts.push(part);
-          // 客户端直接把 reasoning 放在 content 数组里时同样透传；
-          // 已有 reasoning_content 字段则不重复
+          // Pass reasoning through when the client puts it inside the content array instead;
+          // do not duplicate it when reasoning_content is already present
           else if (part.type === 'reasoning' && !msg.reasoning_content) parts.push(part);
         }
       }
@@ -526,7 +526,7 @@ function buildCcRequest(openaiReq) {
         }],
       };
     }
-    // 未知 role 兜底：归一化为 user 并保证 content 为数组，避免 CC 校验拒绝
+    // Unknown roles: normalise to user and make sure content is an array, so CC validation does not reject it
     return { role: 'user', content: [{ type: 'text', text: String(msg.content ?? '') }] };
   });
 
@@ -569,20 +569,20 @@ function buildCcRequest(openaiReq) {
       model: model || 'deepseek/deepseek-v4-flash',
       messages: ccMessages,
       max_tokens: Math.min(max_tokens || 64000, 200000),
-      stream: true,  // CC API 总是 stream
+      stream: true,  // the CC API always streams
     },
   };
 
-  // 条件字段
+  // Conditional fields
   if (systemPrompt) {
     body.params.system = systemPrompt;
   } else if (CFG.emptySystemPlaceholder) {
-    // CC 上游在 params.system 缺省时会注入自身约 7.5K token 的默认提示词（进入
-    // 默认上下文/前缀路径），既产生大量 cached tokens 又污染对话（模型会以为
-    // 自己在 CC 的可执行目录里，见 issue #17）。发一个空格占位即可绕过，
-    // 真机验证 prompt_tokens 从 7653 降到 85。
-    // 默认开启；config.json 设 "emptySystemPlaceholder": false 或环境变量
-    // CC_EMPTY_SYSTEM_PLACEHOLDER=false 可关闭（回到原生的缺省行为）。
+    // When params.system is absent, the upstream injects its own ~7.5K-token default prompt (entering the
+    // default context/prefix path), which both burns cached tokens and pollutes the conversation (the model
+    // thinks it is sitting in CC’s own executable directory — see issue #17). A single space bypasses it;
+    // measured on the live service, prompt_tokens dropped from 7653 to 85.
+    // On by default; disable with "emptySystemPlaceholder": false in config.json or
+    // CC_EMPTY_SYSTEM_PLACEHOLDER=false (back to the upstream’s native behaviour).
     body.params.system = ' ';
   }
   if (temperature !== undefined) {
@@ -603,12 +603,12 @@ function buildCcRequest(openaiReq) {
   if (tool_choice !== undefined) {
     const isNone = (typeof tool_choice === 'string' && tool_choice === 'none') || (tool_choice && typeof tool_choice === 'object' && tool_choice.type === 'none');
     if (isNone) {
-      // CC 上游只接受 tool_choice.type = auto|any|tool，送 none 會 400。
-      // 等同語意：不要提供 tools。
+      // The upstream accepts only tool_choice.type = auto|any|tool; sending none answers 400.
+      // Equivalent meaning: simply do not offer any tools.
       delete body.params.tools;
       delete body.params.tool_choice;
     } else
-    // OpenAI 格式 → CC (Anthropic 风格) 格式
+    // OpenAI format → CC (Anthropic-style) format
     if (typeof tool_choice === 'string') {
       const map = { 'auto': 'auto', 'none': 'none', 'required': 'any' };
       body.params.tool_choice = { type: map[tool_choice] || 'auto' };
@@ -630,7 +630,7 @@ function tryParseJSON(str) {
   try { return JSON.parse(str); } catch { return {}; }
 }
 
-// ── CC NDJSON → OpenAI SSE 转换 ────────────────────
+// ── CC NDJSON → OpenAI SSE conversion ───────────────
 
 function createSseTranslator(model, completionId, created) {
   let chunkIndex = 0;
@@ -645,7 +645,7 @@ function createSseTranslator(model, completionId, created) {
     inputTokens: 0,
     outputTokens: 0,
     cachedInputTokens: 0,
-    /** 解析一行 NDJSON，返回 OpenAI chunk 数组 */
+    /** Parse one NDJSON line and return an array of OpenAI chunks */
     parseLine(line) {
       const trimmed = line.trim();
       if (!trimmed || trimmed === '[DONE]' || trimmed.startsWith(':')) return null;
@@ -662,7 +662,7 @@ function createSseTranslator(model, completionId, created) {
         case 'reasoning-start':
         case 'start':
         case 'start-step':
-          // 忽略，无用户可见内容
+          // Ignored — nothing user-visible
           break;
 
         case 'text-delta': {
@@ -749,7 +749,7 @@ function createSseTranslator(model, completionId, created) {
       return out.length > 0 ? out : null;
     },
 
-    /** 获取 SSE 结束标记 */
+    /** Get the SSE terminator */
     getDoneEvent() {
       return 'data: [DONE]\n\n';
     },
@@ -779,14 +779,14 @@ function normalizeUsage(u) {
   }
 }
 
-// CC 的 inputTokens 是「总数」（含缓存命中部分），而 Anthropic 的 input_tokens 只计
-// 非缓存部分 —— 官方 SDK 注释：Total input tokens in a request is the summation of
+// CC’s inputTokens is a *total* (cache hits included), whereas Anthropic’s input_tokens counts only
+// the non-cached part — as the official SDK notes: "Total input tokens in a request is the summation of
 // `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`。
-// 直接把 CC 的 inputTokens 当 input_tokens 转发，会让下游把两者当成互不重叠的两部分，
-// 相加后约为真实输入的两倍（issue #25）。
+// Forwarding CC’s inputTokens as input_tokens makes downstream clients treat the two as disjoint,
+// so they add up to roughly twice the real input (issue #25).
 //
-// CC 实际已经算好：inputTokenDetails.noCacheTokens（实测 noCacheTokens + cacheReadTokens
-// === inputTokens）。优先采用该字段；缺失时回退到减法，保证老版本上游也能得到正确值。
+// CC already computes what we need: inputTokenDetails.noCacheTokens (measured: noCacheTokens + cacheReadTokens
+// === inputTokens). Prefer that field; fall back to subtraction so older upstreams still get the right number.
 function anthropicInputTokens(usage, noCacheOverride) {
   const u = usage || {};
   if (typeof noCacheOverride === 'number' && noCacheOverride >= 0) return noCacheOverride;
@@ -806,7 +806,7 @@ function mapFinishReason(reason) {
   }
 }
 
-// ── 错误映射 ───────────────────────────────────────
+// ── Error mapping ───────────────────────────────────
 const CC_STATUS_MAP = {
   400: { status: 400, type: 'invalid_request_error' },
   401: { status: 401, type: 'authentication_error' },
@@ -833,7 +833,7 @@ function mapCcError(ccStatus, ccBody) {
     }
   }
 
-  // CC 429 响应可能带 retry-after
+  // A CC 429 may carry retry-after
   if (ccStatus === 429) {
     return {
       status: 429,
@@ -853,8 +853,8 @@ function mapCcEventError(event) {
   const ccStatus = statusMatch ? Number(statusMatch[1]) : 502;
   const mapped = CC_STATUS_MAP[ccStatus] || { status: 502, type: 'upstream_error' };
 
-  // 与 mapCcError 保持一致：终态为 429 时带上 retry_after，
-  // 否则客户端 SDK 拿不到退避提示（402 也映射成 429，一视同仁）
+  // Keep this consistent with mapCcError: carry retry_after when the final status is 429,
+  // otherwise client SDKs get no back-off hint (402 maps to 429 as well, treated the same)
   if (mapped.status === 429) {
     return {
       status: 429,
@@ -865,7 +865,7 @@ function mapCcEventError(event) {
   return { status: mapped.status, body: { error: { message, type: mapped.type } } };
 }
 
-// ── HTTP 请求处理 ──────────────────────────────────
+// ── HTTP request handling ───────────────────────────
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -873,9 +873,9 @@ function readBody(req) {
     let totalSize = 0;
     let settled = false;
     let drained = 0;
-    // 413 拒绝后转入排空模式：继续读取并丢弃剩余请求体，保持 keep-alive 连接可复用，
-    // 让客户端明确收到 413 而不是 Connection reset（issue #7）。
-    // 但若客户端无视 413 持续上传超过 DRAIN_LIMIT，则强制掐断，不无限吞带宽。
+    // After a 413, switch to drain mode: keep reading and discarding the rest of the body so the keep-alive
+    // connection stays reusable, and make sure the client actually sees a 413 rather than a connection reset (issue #7).
+    // If the client ignores the 413 and keeps uploading past DRAIN_LIMIT, cut it off rather than swallow bandwidth for ever.
     const DRAIN_LIMIT = 32 * 1024 * 1024;
     req.on('data', c => {
       if (settled) {
@@ -905,11 +905,11 @@ function readBody(req) {
   });
 }
 
-// 下游背压：res.write() 返回 false 表示 socket 写缓冲已超 highWaterMark（消费者跟不上）。
-// 忽略它会让整个上游流在内存中无界堆积 —— 客户端不读时 RSS 随上游流一起增长（issue #20）。
-// 必须同时监听 close/error，否则客户端断连会让请求协程永久挂起。
-// CLIENT_DRAIN_TIMEOUT_MS > 0 时额外加一道空闲看门狗：超时则 destroy 该响应，
-// 由此触发既有的 res 'close' 处理器 → aborted=true → 中止 CC 上游，无需改动各调用点。
+// Downstream backpressure: res.write() returning false means the socket write buffer passed highWaterMark (the consumer is behind).
+// Ignoring it lets the whole upstream stream pile up in memory — with a client that never reads, RSS grows with the stream (issue #20).
+// Listen for close/error as well, or a client disconnect leaves the request coroutine parked for ever.
+// With CLIENT_DRAIN_TIMEOUT_MS > 0 an extra idle watchdog destroys the response on timeout,
+// which fires the existing res close handler → aborted=true → the CC upstream is aborted, with no changes at the call sites.
 function waitDrain(res) {
   if (!res.writableNeedDrain) return Promise.resolve();
   return new Promise((resolve) => {
@@ -934,14 +934,14 @@ function waitDrain(res) {
   });
 }
 
-// 上游读空闲看门狗：复用单个定时器，避免「每个 chunk 新建一个 setTimeout 且从不清理」。
-// 实测每个待触发定时器滞留约 225B；稳态滞留 = 吞吐 × 超时窗口 × 每响应 chunk 数 × 225B
-// （50 rps × 2000 chunk × 30s ≈ 644MB，非流式 90s 窗口约为其三倍）。
-// arm() 用 refresh() 把窗口重置为「本轮 read 开始」，与原实现语义一致：超时只计 reader.read() 的等待。
+// Upstream read-idle watchdog: one shared timer, instead of “a fresh setTimeout per chunk that is never cleared”.
+// Measured cost is ~225B per pending timer; steady state = throughput × timeout window × chunks per response × 225B
+// (50 rps × 2000 chunks × 30s ≈ 644MB; the 90s non-streaming window is about three times that).
+// arm() uses refresh() to reset the window to “this read started”, matching the original semantics: the timeout counts only reader.read() waits.
 function createIdleWatchdog(timeoutMs) {
   let rejectFn = null;
   const expired = new Promise((_, reject) => { rejectFn = reject; });
-  expired.catch(() => {}); // 读循环退出后定时器才触发时，避免 unhandledRejection
+  expired.catch(() => {}); // avoid an unhandledRejection if the timer fires after the read loop has finished
   const timer = setTimeout(() => rejectFn(new Error('STREAM_IDLE_TIMEOUT')), timeoutMs);
   return {
     arm() { timer.refresh(); return expired; },
@@ -974,7 +974,7 @@ function getApiKey(headers) {
   return null;
 }
 
-// ── 流式转发 ────────────────────────────────────────
+// ── Streaming relay ─────────────────────────────────
 
 async function forwardToCC(body, apiKey, incomingHeaders = {}, signal, promptCacheKey) {
   const url = `${CFG.apiBase}/alpha/generate`;
@@ -1007,7 +1007,7 @@ async function forwardToCC(body, apiKey, incomingHeaders = {}, signal, promptCac
   return response;
 }
 
-// ── 路由 ────────────────────────────────────────────
+// ── Routing ─────────────────────────────────────────
 
 async function handleChatCompletions(req, res) {
   let openaiReq;
@@ -1033,22 +1033,22 @@ async function handleChatCompletions(req, res) {
   const completionId = `chatcmpl-${randomUUID().slice(0, 12)}`;
   const created = nowUnix();
 
-  // 构建 CC 请求体
+  // Build the CC request body
   const ccBody = buildCcRequest(openaiReq);
 
-  // AbortController 用于客户端断连时真正打断 CC 上游（pi-commandcode-provider 模式）
+  // AbortController so a client disconnect really does abort the CC upstream (the pi-commandcode-provider pattern)
   const abortController = new AbortController();
   let aborted = false;
-  // 提前初始化，断连回调/超时 catch 安全引用（避免块级作用域 ReferenceError）
+  // Initialised early so the disconnect callback and timeout handler can reference it safely (no block-scope ReferenceError)
   const startTime = Date.now();
   let bytesReceived = 0; let lastCcEvent = ''; let keepaliveCount = 0; let fullText = '';
   let reader = null;
   let translator = null;
 
   try {
-    // 首次初始化（fingerprint + lifecycle）
+    // First-time initialisation (fingerprint + lifecycle)
     await ensureInitialized(apiKey, abortController.signal);
-    // 转发到 CC API（传入客户端 headers，用于提取 session ID）
+    // Forward to the CC API (client headers are passed in so the session ID can be extracted)
     const ccResponse = await forwardToCC(ccBody, apiKey, req.headers, abortController.signal, openaiReq.prompt_cache_key);
 
     if (!ccResponse.ok) {
@@ -1059,7 +1059,7 @@ async function handleChatCompletions(req, res) {
       return;
     }
 
-    // 下游断连检测：打断 CC 上游 + 记录日志
+    // Downstream disconnect detection: abort the CC upstream and log it
     res.on('close', () => {
       if (res.writableEnded) return; // Normal completion, not a disconnect
       aborted = true;
@@ -1079,7 +1079,7 @@ async function handleChatCompletions(req, res) {
         cachedInputTokens: translator?.cachedInputTokens ?? 0,
       });
       if (!abortController.signal.aborted) {
-        // 断连前抢发 usage=0 终止 chunk，避免下游自行估算 token
+        // Before disconnecting, fire a terminal chunk with usage=0 so downstream does not estimate tokens itself
         try {
           res.write(`data: ${JSON.stringify({
             id: completionId,
@@ -1096,10 +1096,10 @@ async function handleChatCompletions(req, res) {
     });
 
     if (stream) {
-      // ── 流式响应 ──
+      // ── Streaming response ──
       translator = createSseTranslator(model, completionId, created);
       let buffer = '';
-      let started = false; // 延迟写 200 header，超时/output=0 时返回 JSON 429/502 让 SDK 自动重试
+      let started = false; // delay the 200 header so timeouts/zero output can be answered as JSON 429/502 and retried by the SDK
       const decoder = new TextDecoder();
       reader = ccResponse.body.getReader();
 
@@ -1114,8 +1114,8 @@ async function handleChatCompletions(req, res) {
 
           const chunkText = decoder.decode(value, { stream: true });
           buffer += chunkText;
-          // 仅在新到数据含换行时才切分：buffer 中永不残留 '\n'，故无换行即无完整行。
-          // 避免对增长中的超长单行（大 tool-call / tool_result）反复做全量 split —— O(n²) → O(n)。
+          // Split only when the new data contains a newline: the buffer never retains a newline, so no newline means no complete line.
+          // Avoids repeatedly splitting a growing single line (large tool-call / tool_result) — O(n²) → O(n).
           let lines = [];
           if (chunkText.indexOf('\n') !== -1) {
             lines = buffer.split('\n');
@@ -1141,7 +1141,7 @@ async function handleChatCompletions(req, res) {
             }
             if (translator.lastCcEvent) lastCcEvent = translator.lastCcEvent;
           }
-          // silent events 期间发 keepalive，防止客户端超时断开
+          // Send keepalives during silent periods so the client does not time out and disconnect
           if (started && !hadOutput) {
             try { res.write(': keepalive\n\n'); keepaliveCount++; } catch {}
             await waitDrain(res);
@@ -1149,9 +1149,9 @@ async function handleChatCompletions(req, res) {
         }
 
         if (!aborted) {
-          // 成功完成一次请求，重置连续超时计数
+          // A request completed successfully: reset the consecutive-timeout counter
           consecutiveTimeouts = 0;
-          // 处理剩余 buffer
+          // Handle whatever is left in the buffer
           if (buffer.trim()) {
             const events = translator.parseLine(buffer);
             if (events) {
@@ -1166,7 +1166,7 @@ async function handleChatCompletions(req, res) {
               return;
             }
             try { res.write(`data: ${JSON.stringify(translator.upstreamError.body)}\n\n`); } catch {}
-          // 输出 token 为 0 时记为错误，避免下游异常计费
+          // Zero output tokens is treated as an error, so downstream is not billed oddly
           } else if (translator.outputTokens === 0) {
             try { if (!abortController.signal.aborted) abortController.abort(); } catch {}
             if (!started) {
@@ -1189,7 +1189,7 @@ async function handleChatCompletions(req, res) {
         }
       } catch (e) {
         if (aborted) {
-          // 客户端已断连，只清理（close handler 已调用 abortController.abort()）
+          // Client already gone: just clean up (the close handler has already called abortController.abort())
           try { reader.cancel(); } catch {}
         } else if (e.message === 'STREAM_IDLE_TIMEOUT') {
           log('warn', 'Stream idle timeout', {
@@ -1206,7 +1206,7 @@ async function handleChatCompletions(req, res) {
             cachedInputTokens: translator.cachedInputTokens,
           });
           try { reader.cancel(); } catch {}
-          try { abortController.abort(); } catch {} // 打断 CC 上游，避免浪费 token
+          try { abortController.abort(); } catch {} // abort the CC upstream so we stop burning tokens
           consecutiveTimeouts++;
           const timeoutMsg = consecutiveTimeouts >= TIMEOUT_REDUCE_CONTEXT_THRESHOLD
             ? 'Response timeout - try reducing context length (summarize earlier messages)'
@@ -1221,7 +1221,7 @@ async function handleChatCompletions(req, res) {
           }
         } else {
           log('error', 'Stream error', { message: e.message });
-          try { abortController.abort(); } catch {} // 打断 CC 上游
+          try { abortController.abort(); } catch {} // abort the CC upstream
           if (!started) {
             sendJSON(res, 502, { error: { message: `Upstream error: ${e.message}`, type: 'proxy_error', input_tokens: 0 }, retry_after: 10 });
             return;
@@ -1236,7 +1236,7 @@ async function handleChatCompletions(req, res) {
 
       if (!res.writableEnded) res.end();
     } else {
-      // ── 非流式响应（缓冲完整 NDJSON）──
+      // ── Non-streaming response (buffer the whole NDJSON) ──
       let reasoningContent = '';
       let finishReason = 'stop';
       let usage = null;
@@ -1299,7 +1299,7 @@ async function handleChatCompletions(req, res) {
         bytesReceived += value.length;
         const chunkText = decoder.decode(value, { stream: true });
         buf += chunkText;
-        // 无换行则不可能产生完整行，跳过全量 split（见 handleChatCompletions 流式段同处说明）
+        // Without a newline no complete line can exist, so skip the full split (see the same note in the streaming section)
         if (chunkText.indexOf('\n') !== -1) processLines();
       }
       idle.dispose();
@@ -1310,7 +1310,7 @@ async function handleChatCompletions(req, res) {
         return;
       }
 
-      // 输出 token 为 0 时记为错误，避免下游异常计费
+      // Zero output tokens is treated as an error, so downstream is not billed oddly
       if ((usage?.outputTokens ?? 0) === 0) {
         try { if (!abortController.signal.aborted) abortController.abort(); } catch {}
         sendJSON(res, 429, { error: { message: 'Empty response from upstream (zero output tokens)', type: 'rate_limit_error' }, retry_after: 10 });
@@ -1364,7 +1364,7 @@ async function handleChatCompletions(req, res) {
         partialLen: fullText ? fullText.length : 0,
       });
       try { reader?.cancel(); } catch {}
-      try { abortController.abort(); } catch {} // 打断 CC 上游
+      try { abortController.abort(); } catch {} // abort the CC upstream
       consecutiveTimeouts++;
       const timeoutMsg = consecutiveTimeouts >= TIMEOUT_REDUCE_CONTEXT_THRESHOLD
         ? 'Response timeout - try reducing context length (summarize earlier messages)'
@@ -1373,13 +1373,13 @@ async function handleChatCompletions(req, res) {
       sendJSON(res, 429, { error: { message: timeoutMsg, type: 'rate_limit_error', input_tokens: 0 }, retry_after: 5 });
     } else {
       log('error', 'Upstream error', { message: e.message });
-      try { abortController.abort(); } catch {} // 打断 CC 上游
+      try { abortController.abort(); } catch {} // abort the CC upstream
       sendJSON(res, 502, { error: { message: `Upstream error: ${e.message}`, type: 'proxy_error', input_tokens: 0 }, retry_after: 10 });
     }
   }
 }
 
-// ── Anthropic /v1/messages 协议转换 ─────────────────
+// ── Anthropic /v1/messages protocol conversion ──────
 
 function mapAnthropicStopReason(finishReason) {
   switch (finishReason) {
@@ -1424,11 +1424,11 @@ function buildAnthropicResponse(model, fullText, toolCalls, finishReason, usage,
     stop_sequence: null,
     usage: (() => {
       normalizeUsage(usage || {});
-      // CC 未回报 usage 时按内容长度估算输出 token，避免客户端展示/记账为 0
+      // When CC reports no usage, estimate output tokens from the content length so clients do not show/report zero
       const estOut = Math.max(1,
         Math.ceil(((fullText || '').length + (thinkingText || '').length) / 4) + (toolCalls ? toolCalls.length * 20 : 0));
       return {
-        // input_tokens 只计非缓存部分（Anthropic 语义），与 cache_* 相加才等于总输入
+        // input_tokens counts only the non-cached part (Anthropic semantics); adding the cache_* fields gives the total input
         input_tokens: anthropicInputTokens(usage),
         output_tokens: usage?.outputTokens || estOut,
         cache_creation_input_tokens: usage?.inputTokenDetails?.cacheWriteTokens ?? 0,
@@ -1438,7 +1438,7 @@ function buildAnthropicResponse(model, fullText, toolCalls, finishReason, usage,
   };
 }
 
-// Anthropic 的 image block（base64 或 url）→ OpenAI image_url 用的 data URL / URL
+// Anthropic image blocks (base64 or url) → the data URL / URL used by OpenAI image_url
 function anthropicImageUrl(block) {
   const src = block && block.source ? block.source : null;
   if (!src) return '';
@@ -1473,8 +1473,8 @@ function convertAnthropicToOpenAI(anthropicReq) {
   for (const msg of messages) {
     if (msg.role === 'assistant') {
       let textContent = '';
-      // Anthropic 的 thinking block 承载思考内容，需转成 reasoning_content
-      // 交给 buildCcRequest 回传，否则 CC 会因缺少 reasoning 而拒绝
+      // Anthropic thinking blocks carry the reasoning text, which must become reasoning_content
+      // so buildCcRequest sends it back; otherwise CC refuses the request for missing reasoning
       let thinkingContent = '';
       const toolCalls = [];
       const blocks = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: msg.content || '' }];
@@ -1518,16 +1518,16 @@ function convertAnthropicToOpenAI(anthropicReq) {
         }
       }
       if (textContent) {
-        // 暂存，tool_result 优先入队：OpenAI 语义要求 tool 消息紧跟 assistant 的
-        // tool_calls，同一条 user 消息里的文本要排在 tool 结果之后
+        // Held back so tool_results are queued first: OpenAI semantics require tool messages to follow the assistant’s
+        // tool_calls immediately, and text in the same user message must come after the tool results
       }
       for (const tr of toolResults) {
         const toolContent = typeof tr.content === 'string' ? tr.content
           : Array.isArray(tr.content) ? tr.content.map(c => { const u = anthropicImageUrl(c); if (u) userImages.push(u); return c.text || ''; }).join('')
           : String(tr.content || '');
-        // OpenAI 语义里 tool 消息的 name 是可选的；会话恢复等场景下 tool_use_id 可能
-        // 找不到对应 assistant tool_use（历史被客户端裁剪），此时不硬塞空 name，
-        // 避免 CC 上游报 "Tool result is missing"（issue #15）
+        // The name on an OpenAI tool message is optional; when resuming a session, the tool_use_id may have no
+        // matching assistant tool_use (the client trimmed the history), so do not force an empty name —
+        // that makes the CC upstream complain "Tool result is missing" (issue #15)
         const toolMsg = { role: 'tool', tool_call_id: tr.tool_use_id, content: toolContent };
         if (toolNameFromId[tr.tool_use_id]) toolMsg.name = toolNameFromId[tr.tool_use_id];
         openaiMessages.push(toolMsg);
@@ -1584,11 +1584,11 @@ function convertAnthropicToOpenAI(anthropicReq) {
   if (anthropicReq.stop_sequences) openaiReq.stop = anthropicReq.stop_sequences;
   if (anthropicReq.metadata?.user_id) openaiReq.user = anthropicReq.metadata.user_id;
 
-  // 7. Anthropic thinking → reasoning_effort（LiteLLM 标准映射）
+  // 7. Anthropic thinking → reasoning_effort (the standard LiteLLM mapping)
   if (anthropicReq.thinking) {
     const t = anthropicReq.thinking;
     if (t.type === 'disabled' || t.type === 'none') {
-      // 不发送 reasoning_effort
+      // do not send reasoning_effort
     } else if (t.type === 'adaptive') {
       openaiReq.reasoning_effort = t.effort ?? 'medium';
     } else if (t.budget_tokens !== undefined) {
@@ -1615,7 +1615,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
   let outputTokens = 0;
   let cachedInputTokens = 0;
   let cacheWriteTokens = 0;
-  let noCacheTokens = -1;   // -1 = 上游未提供该字段，改用减法兜底
+  let noCacheTokens = -1;   // -1 = the upstream did not provide the field, so fall back to subtraction
   let stopReason = null;
   let hasError = false;
   let currentThinkingText = ''; // accumulated thinking text for the open block
@@ -1687,7 +1687,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
       ctx.bytesReceived += value.length;
       const chunkText = decoder.decode(value, { stream: true });
       buffer += chunkText;
-      // 同 handleChatCompletions：无换行即无完整行，跳过全量 split
+      // As in handleChatCompletions: no newline means no complete line, so skip the full split
       let lines = [];
       if (chunkText.indexOf('\n') !== -1) {
         lines = buffer.split('\n');
@@ -1762,8 +1762,8 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
               ctx.outputTokens = outputTokens;
               ctx.cachedInputTokens = cachedInputTokens;
             }
-            // 上游未回报 usage 时保留本地按 delta 计数的估算值——清零会把有内容的
-            // 响应误判成零输出（触发 429）。未知字段保持原值即可。
+            // When the upstream reports no usage, keep the local delta-based estimate — clearing it would
+            // misjudge a response that did produce content as zero output (triggering 429). Leave unknown fields as they are.
             break;
           }
 
@@ -1785,9 +1785,9 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
       }
     }
 
-    // 无论上游是否回报 usage，都把本地计数同步进 ctx（零输出判定与超时日志依赖它）。
-    // 注意：ctx.inputTokens 保存的是上游原始总数，仅供日志排查；
-    // message_delta 的 input_tokens 走 anthropicInputTokens / noCacheTokens 换算，不读它。
+    // Whether or not the upstream reports usage, sync the local counters into ctx (zero-output detection and timeout logs rely on them).
+    // Note: ctx.inputTokens holds the upstream’s raw total, for log forensics only;
+    // message_delta’s input_tokens goes through anthropicInputTokens / noCacheTokens, not this.
     ctx.inputTokens = inputTokens;
     ctx.outputTokens = outputTokens;
     ctx.cachedInputTokens = cachedInputTokens;
@@ -1798,7 +1798,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
       const closeBlock = closeTextBlock();
       if (closeBlock) yield closeBlock;
 
-      // 输出 token 为 0 时记为错误，避免下游异常计费
+      // Zero output tokens is treated as an error, so downstream is not billed oddly
       if (outputTokens === 0) {
         yield `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: 'Empty response from upstream (zero output tokens)' }, retry_after: 10 })}\n\n`;
       } else {
@@ -1809,7 +1809,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
             output_tokens: outputTokens,
             cache_read_input_tokens: cachedInputTokens,
             cache_creation_input_tokens: cacheWriteTokens || 0,
-            // 只计非缓存部分；否则下游把 input 与 cache_read 相加会得到约两倍（issue #25）
+            // Count only the non-cached part; otherwise downstream adds input + cache_read and gets about double (issue #25)
             input_tokens: noCacheTokens >= 0
               ? noCacheTokens
               : Math.max(0, inputTokens - cachedInputTokens - (cacheWriteTokens || 0)),
@@ -1820,7 +1820,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
       }
     }
   } finally {
-    // 确保流中断时通知上游
+    // Make sure the upstream is told when the stream breaks
     idle.dispose();
     try { reader.cancel(); } catch {}
   }
@@ -1865,14 +1865,14 @@ async function handleMessages(req, res) {
 
   const abortController = new AbortController();
   let aborted = false;
-  // 提前初始化，断连回调/超时 catch 安全引用（避免块级作用域 ReferenceError）
+  // Initialised early so the disconnect callback and timeout handler can reference it safely (no block-scope ReferenceError)
   const startTime = Date.now();
   let messageId = '';
   let reader = null;
   let bytesReceived = 0; let lastCcEvent = ''; let fullText = '';
 
   try {
-    // 首次初始化（fingerprint + lifecycle）
+    // First-time initialisation (fingerprint + lifecycle)
     await ensureInitialized(apiKey, abortController.signal);
     const ccResponse = await forwardToCC(ccBody, apiKey, req.headers, abortController.signal);
 
@@ -1884,12 +1884,12 @@ async function handleMessages(req, res) {
       return;
     }
 
-    // 下游断连检测：打断 CC 上游 + 记录日志
+    // Downstream disconnect detection: abort the CC upstream and log it
     res.on('close', () => {
       if (res.writableEnded) return; // Normal completion, not a disconnect
       aborted = true;
       if (!abortController.signal.aborted) {
-        // 断连前抢发 usage=0 终止事件，避免下游自行估算 token
+        // Before disconnecting, fire a terminal event with usage=0 so downstream does not estimate tokens itself
         try {
           res.write(`event: message_delta\ndata: ${JSON.stringify({
             type: 'message_delta',
@@ -1910,11 +1910,11 @@ async function handleMessages(req, res) {
     });
 
     if (stream) {
-      // ── 流式 Anthropic SSE ──
-      // 行为与 /v1/chat/completions 对齐：首个上游事件（thinking/text/tool_use）到达即
-      // 发 header——之前扣到 text_delta 才发，推理模型 thinking 阶段客户端收不到任何
-      // 字节，触发下游 60s 首字节超时（context canceled）。message_start 仍缓冲：
-      // 完全无输出时还能回 JSON 429/502 让 SDK 自动重试（同 chat 端点）。
+      // ── Streaming Anthropic SSE ──
+      // Aligned with /v1/chat/completions: send the header as soon as the first upstream event (thinking/text/tool_use)
+      // arrives — previously it waited for text_delta, so during a reasoning model’s thinking phase the client saw no
+      // bytes at all and tripped its own 60s first-byte timeout (context canceled). message_start is still buffered:
+      // with no output at all we can still answer a JSON 429/502 and let the SDK retry (same as the chat endpoint).
       let started = false;
       const buf = [];
       const SSE_HEADERS = {
@@ -1933,13 +1933,13 @@ async function handleMessages(req, res) {
         await waitDrain(res);
       };
 
-      // 心跳：等价于 chat 端点的 ': keepalive'——chat 在每轮读到静默事件时发注释行，
-      // Anthropic 翻译器会吞掉 signal 事件，这里改用空闲计时发 ping（Anthropic 标准
-      // 事件，官方 SDK 会忽略），覆盖上游排队/长 thinking 的静默窗口
+      // Heartbeat: the equivalent of the chat endpoint’s keepalive comment line, but the Anthropic translator
+      // swallows signal events, so an idle timer sends a ping instead (a standard Anthropic event that official
+      // SDKs ignore), covering silent windows such as upstream queueing or long thinking.
       let lastSentAt = Date.now();
       const heartbeat = setInterval(() => {
-        // 不向已积压的下游继续塞数据：定时器回调是同步的，无法 await waitDrain，
-        // 因此用 writableNeedDrain 直接跳过本轮心跳（背压场景下少发一个 ping 无副作用）
+        // Do not keep pushing data at a backed-up downstream: the timer callback is synchronous and cannot await waitDrain,
+        // so skip this heartbeat when writableNeedDrain is set (one fewer ping under backpressure does no harm).
         if (started && !aborted && !res.writableEnded && !res.writableNeedDrain && Date.now() - lastSentAt > 15000) {
           try { res.write('event: ping\ndata: {"type":"ping"}\n\n'); lastSentAt = Date.now(); } catch {}
         }
@@ -1975,7 +1975,7 @@ async function handleMessages(req, res) {
                 ctx.upstreamError.body.error.message,
               );
             }
-            // started 时 error 事件已在循环中经 SSE 下发，按规范 error 事件即终结
+            // When started, the error event has already gone out over SSE in the loop; by spec, error terminates the stream
           } else if (ctx.outputTokens === 0) {
             try { abortController.abort(); } catch {}
             if (!started) {
@@ -1989,7 +1989,7 @@ async function handleMessages(req, res) {
         }
       } catch (e) {
         if (aborted) {
-          // 客户端已断连，只清理（close handler 已调用 abortController.abort()）
+          // Client already gone: just clean up (the close handler has already called abortController.abort())
         } else if (e.message === 'STREAM_IDLE_TIMEOUT') {
           log('warn', 'Stream idle timeout', {
             path: '/v1/messages',
@@ -2004,7 +2004,7 @@ async function handleMessages(req, res) {
             outputTokens: ctx.outputTokens,
             cachedInputTokens: ctx.cachedInputTokens,
           });
-          try { abortController.abort(); } catch {} // 打断 CC 上游
+          try { abortController.abort(); } catch {} // abort the CC upstream
           if (!started) {
             consecutiveTimeouts++;
             const timeoutMsg = consecutiveTimeouts >= TIMEOUT_REDUCE_CONTEXT_THRESHOLD
@@ -2023,7 +2023,7 @@ async function handleMessages(req, res) {
           }
         } else {
           log('error', 'Anthropic stream error', { message: e.message });
-          try { abortController.abort(); } catch {} // 打断 CC 上游
+          try { abortController.abort(); } catch {} // abort the CC upstream
           if (!started) {
             sendAnthropicError(res, 502, 'proxy_error', `Upstream error: ${e.message}`, 10);
             return;
@@ -2040,7 +2040,7 @@ async function handleMessages(req, res) {
 
       if (!res.writableEnded) res.end();
     } else {
-      // ── 非流式 Anthropic JSON ──
+      // ── Non-streaming Anthropic JSON ──
       const messageId = 'msg_' + randomUUID().slice(0, 12);
       let finishReason = 'stop';
       let usage = null;
@@ -2103,7 +2103,7 @@ async function handleMessages(req, res) {
         bytesReceived += value.length;
         const chunkText = decoder.decode(value, { stream: true });
         buf += chunkText;
-        // 无换行则不可能产生完整行，跳过全量 split
+        // Without a newline no complete line can exist, so skip the full split
         if (chunkText.indexOf('\n') !== -1) processLines();
       }
       idle.dispose();
@@ -2114,8 +2114,8 @@ async function handleMessages(req, res) {
         return;
       }
 
-      // 零输出判定改为按实际内容：上游偶发不回 totalUsage 时，旧逻辑（usage?.outputTokens ?? 0 === 0）
-      // 会把有完整文本的响应误杀成 429
+      // Zero-output detection now looks at the actual content: when the upstream occasionally omits totalUsage, the old
+      // logic would kill a response that had full text and report 429
       if (!fullText && !thinkingText && !toolCalls) {
         try { if (!abortController.signal.aborted) abortController.abort(); } catch {}
         sendAnthropicError(res, 429, 'rate_limit_error', 'Empty response from upstream (zero output tokens)', 10);
@@ -2145,7 +2145,7 @@ async function handleMessages(req, res) {
         partialLen: fullText ? fullText.length : 0,
       });
       try { reader?.cancel(); } catch {}
-      try { abortController.abort(); } catch {} // 打断 CC 上游
+      try { abortController.abort(); } catch {} // abort the CC upstream
       consecutiveTimeouts++;
       const timeoutMsg = consecutiveTimeouts >= TIMEOUT_REDUCE_CONTEXT_THRESHOLD
         ? 'Response timeout - try reducing context length (summarize earlier messages)'
@@ -2154,13 +2154,13 @@ async function handleMessages(req, res) {
       sendAnthropicError(res, 429, 'rate_limit_error', timeoutMsg);
     } else {
       log('error', 'Upstream error', { message: e.message });
-      try { abortController.abort(); } catch {} // 打断 CC 上游
+      try { abortController.abort(); } catch {} // abort the CC upstream
       sendAnthropicError(res, 502, 'proxy_error', `Upstream error: ${e.message}`, 10);
     }
   }
 }
 
-// ── 动态模型列表 ────────────────────────────────────
+// ── Dynamic model list ──────────────────────────────
 
 let dynamicModels = null;
 let modelsLastFetch = 0;
@@ -2205,10 +2205,10 @@ async function fetchModels(apiKey) {
 }
 
 // ── OpenAI Responses API（/v1/responses）──────────────
-// 供 Codex 等使用 Responses 协议的客户端接入。代理仍是无状态转换层：
-// 把 input 翻译成内部 Chat 格式，复用同一套 CC 转发管线。
-// 不支持 previous_response_id / store（需要服务端保存会话，与无状态定位冲突），
-// 收到直接 400，避免静默降级成错误答案。
+// For clients that speak the Responses protocol (Codex and friends). The relay stays a stateless translation layer:
+// it translates input into the internal Chat format and reuses the same CC forwarding pipeline.
+// previous_response_id / store are not supported (they need server-side conversation state, which conflicts with
+// the stateless design); those requests get a 400 rather than silently degrading into wrong answers.
 
 function responsesTextOf(content) {
   if (typeof content === 'string') return content;
@@ -2227,8 +2227,8 @@ function newResponsesId(prefix) {
   return prefix + randomUUID().replace(/-/g, '').slice(0, 24);
 }
 
-// Command Code 上游只接受 low|medium|high|xhigh|max（实测 ultra 会回 400 invalid option）。
-// Codex / cc-switch 会送 ultra、minimal、none 等值，这里统一收敛；无法识别的值直接丢弃。
+// The Command Code upstream accepts only low|medium|high|xhigh|max (ultra answers 400 invalid option in testing).
+// Codex / cc-switch send ultra, minimal, none and friends; they are normalised here, and unknown values are dropped.
 const CC_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 function normalizeReasoningEffort(value) {
   if (value === undefined || value === null) return undefined;
@@ -2239,7 +2239,7 @@ function normalizeReasoningEffort(value) {
   return undefined;
 }
 
-// Responses 的 content parts → OpenAI chat content（保留圖片，供 buildCcRequest 轉成 CC image 格式）
+// Responses content parts → OpenAI chat content (images preserved, so buildCcRequest can convert them to CC image format)
 function responsesContentToChat(content) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
@@ -2259,7 +2259,7 @@ function responsesContentToChat(content) {
   return parts;
 }
 
-// 上游回報「maximum context length」時，解析出訊息/完成各占多少 token，供自動降 completion 重試。
+// Parse the “maximum context length” error so the completion budget can be lowered automatically and retried.
 function parseContextLimitError(text) {
   if (!text || !/maximum context length/i.test(text)) return null;
   const limit = Number((text.match(/maximum context length is (\d+)/i) || [])[1]);
@@ -2271,7 +2271,7 @@ function parseContextLimitError(text) {
   return { limit, requested, messagesTokens, completionTokens: Number.isFinite(completionTokens) ? completionTokens : 64000 };
 }
 
-// CC_DEBUG_TOOLS=1 時把收到的工具清單寫到 tools-debug.log（不含金鑰），用來診斷工具呼叫問題。
+// With CC_DEBUG_TOOLS=1, write the received tool list to tools-debug.log (never any keys) to diagnose tool-calling issues.
 const DEBUG_TOOLS = process.env.CC_DEBUG_TOOLS === '1';
 function debugToolsLog(entry) {
   if (!DEBUG_TOOLS) return;
@@ -2280,9 +2280,9 @@ function debugToolsLog(entry) {
   } catch (e) { /* ignore */ }
 }
 
-// 工具輸出（例如 view_image 回傳的截圖）常含超長 base64；若直接當文字送出，
-// 上游會以「文字 token」計價（實測 220 萬字 ≈ 153 萬 token），一次就撐爆 1M 上下文。
-// 這裡把 data URL 抽出來改以圖片形式重送，並對超長輸出做截斷。
+// Tool output (a screenshot returned by view_image, say) often carries very long base64; sent as plain text,
+// the upstream bills it as *text tokens* (measured: 2.2M characters ≈ 1.53M tokens) and one turn blows the 1M context.
+// So the data URL is pulled out, re-sent as an image, and over-long output is truncated.
 const MAX_TOOL_OUTPUT_CHARS = (() => { const n = Number.parseInt(process.env.CC_MAX_TOOL_OUTPUT_CHARS ?? '', 10); return Number.isFinite(n) && n > 0 ? n : 100000; })();
 const DATA_URL_RE = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi;
 function extractToolOutput(item) {
@@ -2301,7 +2301,7 @@ function extractToolOutput(item) {
   return { text, images };
 }
 
-// ── Command Code 內建 web 工具（CLI 端執行，這裡由代理代跑）──────────────
+// ── Command Code’s built-in web tools (client-executed; the relay runs them on the client’s behalf) ──
 // CLI 1.53.1：POST /alpha/web-search {query,numResults,allowedDomains?,blockedDomains?}
 //             POST /alpha/web-fetch  {url,format} → {content,url,status}
 const MAX_WEB_ROUNDS = (() => { const n = Number.parseInt(process.env.CC_MAX_WEB_ROUNDS ?? '', 10); return Number.isFinite(n) && n > 0 ? Math.min(8, n) : 3; })();
@@ -2418,9 +2418,9 @@ async function executeCcWebTool(name, argsRaw, apiKey, incomingHeaders, promptCa
   return "Error: unsupported internal tool " + name;
 }
 
-// 客戶端中斷回合時，歷史裡可能留下「沒有 tool result 的 tool_call」或孤兒 tool result。
-// 上游（DeepSeek/CC）會直接拒絕：Tool result is missing for tool call <id>，導致該對話永久卡死。
-// 這裡自動修補：缺結果的補一筆說明，孤兒結果直接丟棄。
+// When a client interrupts a turn, the history can keep a tool_call with no tool result, or an orphaned tool result.
+// The upstream (DeepSeek/CC) rejects that outright — “Tool result is missing for tool call <id>” — and the conversation wedges.
+// Repaired automatically here: a missing result gets an explanatory one, and orphaned results are dropped.
 function repairToolCallPairs(messages) {
   const callIds = new Set();
   for (const msg of messages) {
@@ -2458,13 +2458,13 @@ function repairToolCallPairs(messages) {
 
 function convertResponsesToChat(respReq) {
   const messages = [];
-  // 工具輸出裡的圖片必須延後到「整組 tool results」之後才插入；
-  // 插在中間會在 assistant(tool_calls) 與後續 tool result 之間夾一條 user 訊息，
-  // 上游會判定 Tool results are missing（DeepSeek 實測 502）。
+  // Images inside tool output must be inserted *after* the whole group of tool results;
+  // inserting them in between puts a user message between assistant(tool_calls) and the later tool results,
+  // and the upstream then reports “Tool results are missing” (measured 502 on DeepSeek).
   const deferredImageMsgs = [];
   const nsByToolName = new Map();
-  // ==== 實驗：namespace 別名探針（預設開啟；CC_NAMESPACE_ALIAS_PROBE=0 可關閉）====
-  // 目的：找出 App 到底期待哪種工具名（短名 / mcp__ns__tool / ns::tool）
+  // ==== Experiment: namespace alias probe (off by default; CC_NAMESPACE_ALIAS_PROBE=1 enables it) ====
+  // Purpose: find out which tool-name shape the app actually expects (bare name / mcp__ns__tool / ns::tool)
   const NAMESPACE_ALIAS_PROBE = process.env.CC_NAMESPACE_ALIAS_PROBE === '1';
   const ALIAS_PROBE_TOOL = process.env.CC_ALIAS_PROBE_TOOL || 'list_threads';
   const probeForward = new Map();
@@ -2494,8 +2494,8 @@ function convertResponsesToChat(respReq) {
     if (sys) messages.push({ role: 'system', content: sys });
   }
 
-  // Responses 把 reasoning / message / function_call 拆成并列 item，
-  // Chat 要求它们挂在同一条 assistant 消息上，故先累积再冲刷。
+  // Responses splits reasoning / message / function_call into sibling items,
+  // while Chat requires them on one assistant message, so accumulate and then flush.
   let pending = null;
   const ensurePending = () => (pending = pending || { role: 'assistant', content: null, tool_calls: [] });
   const flushPending = () => {
@@ -2513,7 +2513,7 @@ function convertResponsesToChat(respReq) {
   } else if (Array.isArray(input)) {
     for (const item of input) {
       if (!item || typeof item !== 'object') continue;
-      // 有些客户端送 message item 会省略 type 字段，这里兜底成 message，避免整段 input 被丢弃。
+      // Some clients omit the type field on message items; default it to message so the whole input is not dropped.
       if (!item.type && item.role) item.type = 'message';
       if (item.type !== 'function_call_output') flushDeferredImages();
       switch (item.type) {
@@ -2555,7 +2555,7 @@ function convertResponsesToChat(respReq) {
               content: text,
             });
             if (images.length) {
-              // 圖片改用真正的 image part 重送（1 張只算約 900 token，而不是數十萬 token 的文字）
+              // Re-send images as real image parts (one image costs ~900 tokens, not hundreds of thousands as text)
               deferredImageMsgs.push({
                 role: 'user',
                 content: [
@@ -2580,9 +2580,9 @@ function convertResponsesToChat(respReq) {
 
   let tools;
   if (Array.isArray(respReq.tools) && respReq.tools.length) {
-    // 新版 Codex App（26.903.9818.0+）把工具包在 namespace 裡，例如
+    // Newer Codex-App builds wrap tools in a namespace, for example
     // {"type":"namespace","name":"mcp__node_repl","tools":[{"name":"js",...}]}。
-    // 這裡展開成扁平的 function 清單，否則模型看不到 js / 子工具（computer use 會失效）。
+    // Expanding them into a flat function list keeps js / sub-tools visible to the model (otherwise Computer Use breaks).
     const flattened = [];
     const collect = (entry, depth, nsName) => {
       if (!entry || typeof entry !== 'object' || depth > 4) return;
@@ -2632,7 +2632,7 @@ function convertResponsesToChat(respReq) {
 
   const rawWebTools = Array.isArray(respReq.tools) ? respReq.tools : [];
   const wantsWebSearch = rawWebTools.some((t) => t && (t.type === "web_search" || t.type === "web_search_preview"));
-  // App 只送 web_search；一併注入 web_fetch（兩者都由代理代跑，語意與 CC CLI 相同）
+  // The app only sends web_search; inject web_fetch alongside it (the relay runs both, matching the CC CLI’s behaviour)
   const wantsWebFetch = wantsWebSearch || rawWebTools.some((t) => t && t.type === "web_fetch");
   if (wantsWebSearch || wantsWebFetch) {
     tools = tools || [];
@@ -2658,10 +2658,10 @@ function convertResponsesToChat(respReq) {
   return out;
 }
 
-// Responses 的 input_tokens 是总数，cached / cache_write 均为其子集 ——
-// 与 Anthropic 相反（那里 cache_read 是独立增量，必须做减法，见 issue #25）。
-// 本代理上游 CC 的 inputTokens 同样已含缓存，故此处直接沿用、不做减法。
-// 实测：total_tokens === input_tokens + output_tokens（即使 cached 占绝大多数）。
+// Responses’ input_tokens is a total, with cached / cache_write as subsets of it —
+// the opposite of Anthropic (where cache_read is a separate increment and must be subtracted — see issue #25).
+// Our upstream CC also includes cache hits in inputTokens, so it is passed through without subtraction.
+// Measured: total_tokens === input_tokens + output_tokens (even when cached dominates).
 function buildResponsesUsage(usage, fallbackOutputTokens) {
   const u = usage || {};
   normalizeUsage(u);
@@ -2669,7 +2669,7 @@ function buildResponsesUsage(usage, fallbackOutputTokens) {
   const outTok = u.outputTokens || fallbackOutputTokens || 0;
   return {
     input_tokens: inTok,
-    // 规范里 cached_tokens 与 cache_write_tokens 都是 required
+    // cached_tokens and cache_write_tokens are both required by the spec
     input_tokens_details: {
       cached_tokens: u.cachedInputTokens || 0,
       cache_write_tokens: (u.inputTokenDetails && u.inputTokenDetails.cacheWriteTokens) || 0,
@@ -2744,12 +2744,12 @@ function sendResponsesError(res, status, type, message, retryAfter) {
   sendJSON(res, status, body);
 }
 
-// CC NDJSON → Responses 具名 SSE 事件（每个事件都必需的 sequence_number 递增发送）
+// CC NDJSON → named Responses SSE events (every event carries an incrementing sequence_number)
 function createResponsesSseTranslator(model, responseId, created, opts) {
   const toolNameMap = (opts && opts.toolNameMap) || null;
   const toolNamespaces = (opts && opts.toolNamespaces) || null;
   const SEND_NAMESPACE_FIELD = process.env.CC_SEND_NAMESPACE_FIELD !== '0';
-  // 模型可能送出短名、ns::tool 或 ns__tool 三種形式，統一解析成 (name, namespace)。
+  // A model may send the bare name, ns::tool or ns__tool; all three resolve to (name, namespace).
   const resolveToolCall = (rawName) => {
     const nm = String(rawName || '');
     if (toolNamespaces && toolNamespaces.has(nm)) return { name: nm, namespace: toolNamespaces.get(nm) };
@@ -2895,7 +2895,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
           const callId = event.toolCallId || newResponsesId('call_');
           const args = typeof event.input === 'string' ? event.input : JSON.stringify(event.input || {});
           if (internalToolNames && internalToolNames.has(event.toolName)) {
-            // 代理代跑的工具（web_search / web_fetch）：不輸出給客戶端，只記錄下來稍後執行。
+            // Tools the relay runs itself (web_search / web_fetch): never shown to the client, just recorded for later execution.
             out.push.apply(out, closeItem());
             internalCalls.push({ callId, name: event.toolName, args });
             break;
@@ -2935,7 +2935,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
     finish() {
       if (!createdSent) return [];
       const out = closeItem();
-      // finishReason=length 表示被 max_output_tokens 截断：规范要求 status=incomplete
+      // finishReason=length means max_output_tokens truncated the answer: the spec requires status=incomplete
       const truncated = finishReason === 'length';
       out.push(sse(truncated ? 'response.incomplete' : 'response.completed', {
         response: Object.assign(baseResponse(truncated ? 'incomplete' : 'completed', doneItems.slice()), {
@@ -2995,10 +2995,10 @@ async function handleResponses(req, res) {
     log('info', 'Responses input items', { count: itemSummary.length, items: itemSummary.slice(-60) });
   }
   {
-    // 實驗（預設開啟，CC_REJECT_NAMESPACE_TOOLS=0 可關）：
-    // App 對我們送 namespace 工具時，會把 MCP/App 工具當成不可執行（呼叫一律 unsupported call）。
-    // Agent Router 會直接讓這種請求失敗，App 便退回扁平工具模式（那時所有工具都能用）。
-    // 這裡比照辦理：看到 namespace 就回錯誤，逼 App 走扁平模式。
+    // Experiment (off by default; set CC_REJECT_NAMESPACE_TOOLS=1 to enable):
+    // When we accept namespace tools, the app treats MCP/app tools as non-executable (every call answers unsupported call).
+    // Agent Router fails such requests outright, and the app then falls back to flat tools (where everything works).
+    // This mirrors that: refuse namespace tools so the app falls back to the flat list.
     if (process.env.CC_REJECT_NAMESPACE_TOOLS === '1' && Array.isArray(respReq.tools)) {
       const nsTool = respReq.tools.find((t) => t && t.type === 'namespace');
       if (nsTool) {
@@ -3219,7 +3219,7 @@ async function handleResponses(req, res) {
 
       if (!res.writableEnded) res.end();
     } else {
-      // ── 非流式：緩衝完整 NDJSON 後一次性構造 Responses 物件（含 web 工具代跑迴圈）──
+      // ── Non-streaming: buffer the whole NDJSON, then build the Responses object once (with the web-tool loop) ──
       const internalToolNames = new Set();
       if (baseChat.__webTools && baseChat.__webTools.search) internalToolNames.add(WEB_SEARCH_NAME);
       if (baseChat.__webTools && baseChat.__webTools.fetch) internalToolNames.add(WEB_FETCH_NAME);
@@ -3380,7 +3380,7 @@ function handleHealth(req, res) {
   res.end('OK');
 }
 
-// ── 服务器 ──────────────────────────────────────────
+// ── Server ──────────────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
   // CORS
@@ -3396,7 +3396,7 @@ const server = http.createServer(async (req, res) => {
   const host = req.headers.host || 'localhost';
   const url = new URL(req.url, `http://${host}`);
 
-  // 在途上限准入。/health 与 / 例外：探活与编排器不该因业务繁忙而收 503。
+  // In-flight admission. /health and / are exempt: probes and orchestrators should never see a 503 just because business traffic is busy.
   const isLiveness = url.pathname === '/health' || url.pathname === '/';
   if (!isLiveness && MAX_INFLIGHT > 0) {
     if (inflightCount >= MAX_INFLIGHT) {
@@ -3410,8 +3410,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     inflightCount++;
-    // 释放时机：响应写完（finish）或连接终止（close）—— 取先到者，且幂等，
-    // 保证任何退出路径（成功/出错/客户端断连/超时）都不会泄漏槽位。
+    // Release timing: when the response finishes or the connection closes — whichever comes first, and idempotent,
+    // so no exit path (success, error, client disconnect, timeout) can leak a slot.
     let released = false;
     const release = () => {
       if (released) return;
@@ -3441,10 +3441,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// 全局兜底：abort 触发的异步 rejection 不会让进程崩溃
+// Global backstop: an async rejection triggered by an abort must not bring the process down
 process.on('unhandledRejection', (reason) => {
   if (reason?.name === 'AbortError' || reason?.code === 'ABORT_ERR') {
-    // 客户端断连触发的 abort — 预期行为，静默处理
+    // An abort caused by a client disconnect — expected, handled quietly
     log('info', 'Aborted request cleaned up');
   } else {
     log('error', 'Unhandled rejection', { message: reason?.message || String(reason), stack: reason?.stack?.split('\n')[0] });
@@ -3469,7 +3469,7 @@ server.listen(CFG.port, CFG.host, () => {
   if (CLIENT_DRAIN_TIMEOUT_MS > 0) {
     log('info', 'Client drain timeout enabled', { timeoutMs: CLIENT_DRAIN_TIMEOUT_MS });
   }
-  // 内存提示：body 上限隐含的最坏内存 = 上限 × 实测放大系数（见 MAX_BODY_SIZE 注释 / issue #20）
+  // Memory hint: the implied worst case is the cap × the measured multiplier (see MAX_BODY_SIZE / issue #20)
   const bodyCapMB = Math.round(MAX_BODY_SIZE / 1048576);
   const worstCaseMB = Math.round(bodyCapMB * 5.5);
   if (worstCaseMB >= 500) {
