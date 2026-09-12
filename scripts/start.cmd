@@ -11,6 +11,9 @@ if not exist "proxy.mjs" (
 set "CC_STREAM_IDLE_MS=300000"
 set "CC_NONSTREAM_IDLE_MS=300000"
 
+rem PROXY_PORT moves the relay off 3050; scripts\stop.cmd reads the same variable. :3
+if defined PROXY_PORT set "PORT=%PROXY_PORT%"
+
 echo ============================================================
 echo   Cider CC UwU ~ pulling up a stool :3
 echo   URL:    http://127.0.0.1:3050

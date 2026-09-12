@@ -4,6 +4,21 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 **Traditional Chinese version: [CHANGELOG.zh-TW.md](CHANGELOG.zh-TW.md)**
 
+## [Unreleased]
+
+### Fixed
+
+- **Windows scripts behave as one set.** `scripts/start.cmd` and `scripts/start-background.cmd` now honour
+  `PROXY_PORT`, matching `scripts/stop.cmd`, so all three move together when you pour onto another port.
+- **`scripts/stop.cmd` follows your port.** It resolves the listening port from `PROXY_PORT`, then `PORT`,
+  then `config.json`, instead of assuming 3050.
+- **The background launcher hands off and returns.** `scripts/start-background.cmd` now exits cleanly once the
+  detached node process owns the port, so the console comes straight back.
+
+### Added
+
+- **Docker build in CI.** The workflow builds the image and polls `/health` inside the container, so the
+  Dockerfile cannot rot unnoticed.
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

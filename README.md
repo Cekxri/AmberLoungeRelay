@@ -53,7 +53,7 @@ plucks it out of `Authorization: Bearer <key>` or `x-api-key`, so both the OpenA
 styles work without any extra fiddling.
 
 **Windows friends:** `scripts/start.cmd` opens it in a console window, `scripts/start-background.cmd`
-runs it quietly in the background (logs in `logs/`), and `scripts/stop.cmd` shuts it down again.
+runs it quietly in the background (logs in `logs/`), and `scripts/stop.cmd` shuts it down again. All three honour PROXY_PORT (default 3050): set PROXY_PORT=13050 before starting moves the foreground, background and stop scripts together.
 
 ## Configuration
 

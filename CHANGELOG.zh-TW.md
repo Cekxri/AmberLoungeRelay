@@ -4,6 +4,20 @@
 
 **English version: [CHANGELOG.md](CHANGELOG.md)**
 
+## [Unreleased]
+
+### 修正
+
+- **Windows 三支腳本行為一致。** `scripts/start.cmd` 與 `scripts/start-background.cmd` 現在也認
+  `PROXY_PORT`，跟 `scripts/stop.cmd` 對齊；要換到別的埠時三個會一起移動。
+- **`scripts/stop.cmd` 會跟著你的埠。** 它依序從 `PROXY_PORT`、`PORT`、`config.json` 解析出真正
+  在監聽的埠，不再寫死 3050。
+- **背景啟動器交棒後就返回。** `scripts/start-background.cmd` 把 node 交給背景行程後會乾淨結束，
+  主控台會立刻回到你手上。
+
+### 新增
+
+- **CI 會建 Docker 映像。** 工作流程會建置映像並在容器內輪詢 `/health`，Dockerfile 不會悄悄爛掉。
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是

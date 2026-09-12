@@ -49,7 +49,7 @@ curl http://127.0.0.1:3050/v1/chat/completions \
 `Authorization: Bearer <key>` 或 `x-api-key` 撈出來，所以 OpenAI 與 Anthropic 兩種 SDK 風格都能直接用。
 
 **Windows 的朋友：**`scripts/start.cmd` 會在視窗裡開起來、`scripts/start-background.cmd` 會安靜地在背景跑
-（日誌放在 `logs/`）、`scripts/stop.cmd` 負責收攤。
+（日誌放在 `logs/`）、`scripts/stop.cmd` 負責收攤。 三個腳本都認 PROXY_PORT（預設 3050）：啟動前 set PROXY_PORT=13050，前景、背景與停止會一起換到別的埠。
 
 ## 設定
 
