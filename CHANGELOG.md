@@ -8,6 +8,11 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Images and notes no longer split a tool-call group.** When one assistant turn called several tools and the
+  app inserted an `<image_resize_notice>` (or an image itself) between the results, the upstream answered
+  `Tool results are missing for tool calls ...` and the conversation wedged behind a 502. The relay now tracks
+  the outstanding call ids of the current group and only releases held-back images and system/developer notes
+  once every result has arrived. (Reproduced with a real 529-item history: 502 before, 200 after.)
 - **Key fragments never reach the log.** The `Fingerprint generated for key` line printed the first eight
   characters of your API key; it now prints an irreversible short hash instead. The README already promised
   this — now the code keeps the promise.

@@ -8,6 +8,10 @@
 
 ### 修正
 
+- **圖片與提示訊息不再切斷工具呼叫群組。** 同一輪呼叫多個工具時，App 會在結果之間插入 `<image_resize_notice>`
+  （或圖片本身），上游就會回 `Tool results are missing for tool calls ...`，對話卡在 502。現在代理會追蹤
+  這一組還沒回結果的 call id，等整組到齊才把扣住的圖片與 system/developer 提示放出去。
+  （用真實 529 項歷史重現：修前 502、修後 200。）
 - **金鑰片段不再進日誌。** `Fingerprint generated for key` 這行原本會印出 API key 的前八個字元，
   現在改成不可逆的短雜湊。README 早就承諾過這件事 —— 現在程式真的做到了。
 - **`logLevel` 真的會過濾。** 它一直被接受、也被寫進文件，但程式從沒讀過；現在 `error`、`warn`、

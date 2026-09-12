@@ -2471,6 +2471,14 @@ function convertResponsesToChat(respReq) {
   // inserting them in between puts a user message between assistant(tool_calls) and the later tool results,
   // 繁中：工具輸出裡的圖片必須延後到整組 tool results 之後才插入，否則會在 assistant(tool_calls) 與結果之間夾一條 user 訊息，上游會判定 missing（DeepSeek 實測 502）。
   const deferredImageMsgs = [];
+  // 繁中：上游要求「同一組工具呼叫的結果」必須連續；中間插進任何訊息（圖片或 system/developer 提示）
+  // 都會被判成 missing tool result（用真實歷史重現 502）。所以追蹤這一組還缺哪些 call id，
+  // 整組到齊之前先把圖片與提示訊息扣住，到齊後才放出去。
+  // English: the upstream requires the results of one tool-call group to be contiguous; anything inserted
+  // between them is reported as a missing tool result. Track the outstanding call ids and hold back
+  // images and system/developer notes until the whole group has arrived.
+  const awaitingResultIds = new Set();
+  const deferredSystemMsgs = [];
   const nsByToolName = new Map();
   // ==== Experiment: namespace alias probe (off by default; CC_NAMESPACE_ALIAS_PROBE=1 enables it) ====
   // Purpose: find out which tool-name shape the app actually expects (bare name / mcp__ns__tool / ns::tool)
@@ -2496,6 +2504,19 @@ function convertResponsesToChat(respReq) {
     if (!deferredImageMsgs.length) return;
     for (const m of deferredImageMsgs) messages.push(m);
     deferredImageMsgs.length = 0;
+  };
+
+  const flushDeferredSystems = () => {
+    if (!deferredSystemMsgs.length) return;
+    for (const m of deferredSystemMsgs) messages.push(m);
+    deferredSystemMsgs.length = 0;
+  };
+  // 繁中：整組工具結果到齊前不放行任何插入物。
+  // English: nothing may slip in until every result of the group has arrived.
+  const toolGroupComplete = () => awaitingResultIds.size === 0;
+  const flushGroupTail = () => {
+    flushDeferredSystems();
+    flushDeferredImages();
   };
 
   if (respReq.instructions !== undefined && respReq.instructions !== null) {
@@ -2524,7 +2545,9 @@ function convertResponsesToChat(respReq) {
       if (!item || typeof item !== 'object') continue;
       // Some clients omit the type field on message items; default it to message so the whole input is not dropped.
       if (!item.type && item.role) item.type = 'message';
-      if (item.type !== 'function_call_output') flushDeferredImages();
+      // 繁中：只有整組工具結果到齊時，才允許把扣住的圖片／提示放出去。
+      // English: only release held-back images/notes once the whole tool group is complete.
+      if (item.type !== 'function_call_output' && toolGroupComplete()) flushGroupTail();
       switch (item.type) {
         case 'reasoning': {
           const t = responsesReasoningOf(item);
@@ -2537,8 +2560,15 @@ function convertResponsesToChat(respReq) {
           if (item.role === 'assistant') {
             if (text) ensurePending().content = text;
           } else if (item.role === 'system' || item.role === 'developer') {
-            flushPending();
-            messages.push({ role: 'system', content: text });
+            // 繁中：這一組工具結果還沒到齊（或剛好緊接在結果後面）就先把提示扣住，等整組結束再送。
+            // English: hold the note back while the group is still open; release it once the group is done.
+            const lastIsToolResult = messages.length > 0 && messages[messages.length - 1].role === 'tool';
+            if (!toolGroupComplete() || lastIsToolResult) {
+              deferredSystemMsgs.push({ role: 'system', content: text });
+            } else {
+              flushPending();
+              messages.push({ role: 'system', content: text });
+            }
           } else {
             flushPending();
             messages.push({ role: 'user', content: rich || text });
@@ -2547,11 +2577,15 @@ function convertResponsesToChat(respReq) {
         }
         case 'function_call': {
           if (item.name && probeReverse.has(item.name)) item.name = probeReverse.get(item.name);
-          ensurePending().tool_calls.push({
-            id: item.call_id || item.id || ('call_' + randomUUID().slice(0, 8)),
-            type: 'function',
-            function: { name: item.name || '', arguments: item.arguments || '{}' },
-          });
+          {
+            const callId = item.call_id || item.id || ('call_' + randomUUID().slice(0, 8));
+            awaitingResultIds.add(callId);
+            ensurePending().tool_calls.push({
+              id: callId,
+              type: 'function',
+              function: { name: item.name || '', arguments: item.arguments || '{}' },
+            });
+          }
           break;
         }
         case 'function_call_output': {
@@ -2573,6 +2607,8 @@ function convertResponsesToChat(respReq) {
                 ],
               });
             }
+            if (item.call_id) awaitingResultIds.delete(item.call_id);
+            if (toolGroupComplete()) flushGroupTail();
           }
           break;
         }
@@ -2580,6 +2616,7 @@ function convertResponsesToChat(respReq) {
       }
     }
   }
+  flushDeferredSystems();
   flushPending();
   flushDeferredImages();
 
