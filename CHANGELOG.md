@@ -8,6 +8,11 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Docs and packaging accuracy.** The Docker examples used an uppercase image tag (`CiderCC-UwU:latest`),
+  which Docker rejects — they now use the lowercase `cidercc-uwu:latest`.
+- **UK spelling everywhere.** Internal helpers `normalize*` are now `normalise*`, matching the project's
+  English (UK) convention.
+- **Traditional Chinese typo.** A stray simplified character in `README.zh-TW.md` is fixed.
 - **Windows scripts behave as one set.** `scripts/start.cmd` and `scripts/start-background.cmd` now honour
   `PROXY_PORT`, matching `scripts/stop.cmd`, so all three move together when you pour onto another port.
 - **`scripts/stop.cmd` follows your port.** It resolves the listening port from `PROXY_PORT`, then `PORT`,

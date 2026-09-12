@@ -49,7 +49,8 @@ curl http://127.0.0.1:3050/v1/chat/completions \
 `Authorization: Bearer <key>` 或 `x-api-key` 撈出來，所以 OpenAI 與 Anthropic 兩種 SDK 風格都能直接用。
 
 **Windows 的朋友：**`scripts/start.cmd` 會在視窗裡開起來、`scripts/start-background.cmd` 會安靜地在背景跑
-（日誌放在 `logs/`）、`scripts/stop.cmd` 負責收攤。 三個腳本都認 PROXY_PORT（預設 3050）：啟動前 set PROXY_PORT=13050，前景、背景與停止會一起換到別的埠。
+（日誌放在 `logs/`）、`scripts/stop.cmd` 負責收攤。三個腳本都認 `PROXY_PORT`（預設 3050）：啟動前 `set PROXY_PORT=13050`，
+前景、背景與停止會一起換到別的埠。
 
 ## 設定
 
@@ -175,7 +176,7 @@ Cursor（或任何 OpenAI 相容工具）填 `http://127.0.0.1:3050/v1` 加上�
 
 ```bash
 docker compose up -d                        # 或 PROXY_PORT=13050 docker compose up -d
-docker build -t CiderCC-UwU:latest . # 想自己蓋也行
+docker build -t cidercc-uwu:latest .         # 想自己蓋也行
 ```
 
 映像檔是輕量 `node:22-alpine`，聽 `3050`，內建 `/health` 健康檢查。
@@ -194,7 +195,7 @@ docker build -t CiderCC-UwU:latest . # 想自己蓋也行
 
 ## 已知限制
 
-- **非官方專案。** 這是針對一個沒有正式開放此類存取服務的逆向客户端。Command Code 的條款仍然適用，
+- **非官方專案。** 這是針對一個沒有正式開放此類存取服務的逆向客戶端。Command Code 的條款仍然適用，
   而且上游在交握階段確實會偵測單純的代理流量——請自行衡量風險，那不是這支程式可以「修好」的東西。
 - `tool_search`（客戶端內部的延遲工具查詢）沒有實作；工具現在都直接提供，所以也用不到它。
 - 無狀態設計：`previous_response_id` 會刻意拒絕，每輪請帶完整上下文。

@@ -589,7 +589,7 @@ function buildCcRequest(openaiReq) {
     body.params.temperature = temperature;
   }
   if (reasoning_effort !== undefined) {
-    const eff = normalizeReasoningEffort(reasoning_effort);
+    const eff = normaliseReasoningEffort(reasoning_effort);
     if (eff) body.params.reasoning_effort = eff;
   }
   if (tools && tools.length > 0) {
@@ -714,7 +714,7 @@ function createSseTranslator(model, completionId, created) {
         case 'finish': {
           const fr = finishReason || mapFinishReason(event.finishReason || 'stop');
           const u = event.totalUsage || usage || {};
-          normalizeUsage(u);
+          normaliseUsage(u);
           this.inputTokens = u.inputTokens ?? 0;
           this.outputTokens = u.outputTokens ?? 0;
           this.cachedInputTokens = u.cachedInputTokens ?? 0;
@@ -768,9 +768,9 @@ function makeChunk(id, created, model, delta, finishReason, usage) {
   return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
-// normalize CC usage stats:
+// normalise CC usage stats:
 // - outputTokens=0 → zero everything (anti false billing)
-function normalizeUsage(u) {
+function normaliseUsage(u) {
   if (!u) return;
   const ot = Number(u.outputTokens);
   if (!ot) {  // 0, null, undefined, NaN → zero input + cached (anti false billing)
@@ -1335,7 +1335,7 @@ async function handleChatCompletions(req, res) {
         }],
     usage: (() => {
       if (!usage) usage = {};
-      normalizeUsage(usage);
+      normaliseUsage(usage);
       return {
         prompt_tokens: usage.inputTokens ?? 0,
         completion_tokens: usage.outputTokens ?? 0,
@@ -1424,7 +1424,7 @@ function buildAnthropicResponse(model, fullText, toolCalls, finishReason, usage,
     stop_reason: mapAnthropicStopReason(finishReason || 'stop'),
     stop_sequence: null,
     usage: (() => {
-      normalizeUsage(usage || {});
+      normaliseUsage(usage || {});
       // When CC reports no usage, estimate output tokens from the content length so clients do not show/report zero
       const estOut = Math.max(1,
         Math.ceil(((fullText || '').length + (thinkingText || '').length) / 4) + (toolCalls ? toolCalls.length * 20 : 0));
@@ -1751,7 +1751,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
             if (event.finishReason) stopReason = mapAnthropicStopReason(event.finishReason);
             const u = event.totalUsage || event.usage;
             if (u) {
-              normalizeUsage(u);
+              normaliseUsage(u);
               inputTokens = u.inputTokens ?? inputTokens;
               outputTokens = u.outputTokens ?? outputTokens;
               cachedInputTokens = u.cachedInputTokens ?? cachedInputTokens;
@@ -2231,7 +2231,7 @@ function newResponsesId(prefix) {
 // The Command Code upstream accepts only low|medium|high|xhigh|max (ultra answers 400 invalid option in testing).
 // 繁中：Codex／cc-switch 會送 ultra、minimal、none 等值，這裡統一收斂（ultra→max、minimal/none/off→low），無法識別的就丟棄。
 const CC_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
-function normalizeReasoningEffort(value) {
+function normaliseReasoningEffort(value) {
   if (value === undefined || value === null) return undefined;
   const v = String(value).toLowerCase().trim();
   if (CC_REASONING_EFFORTS.has(v)) return v;
@@ -2344,7 +2344,7 @@ function ccWebHeaders(apiKey, incomingHeaders, promptCacheKey) {
   if (CFG.zdr || (incomingHeaders && incomingHeaders["x-cmd-zdr"] === "1")) headers["x-cmd-zdr"] = "1";
   return headers;
 }
-function normalizeDomainFilter(list) {
+function normaliseDomainFilter(list) {
   if (!Array.isArray(list)) return [];
   return list.map((d) => String(d || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter(Boolean);
 }
@@ -2382,8 +2382,8 @@ async function executeCcWebTool(name, argsRaw, apiKey, incomingHeaders, promptCa
   if (name === WEB_SEARCH_NAME) {
     const query = String(args.query || "").trim();
     if (query.length < 2) return "Error searching the web: web_search requires a \"query\" of at least 2 characters.";
-    const allowed = normalizeDomainFilter(args.allowed_domains);
-    const blocked = normalizeDomainFilter(args.blocked_domains);
+    const allowed = normaliseDomainFilter(args.allowed_domains);
+    const blocked = normaliseDomainFilter(args.blocked_domains);
     if (allowed.length && blocked.length) return "Error searching the web: pass either allowed_domains or blocked_domains, not both.";
     const numResults = Math.min(10, Math.max(1, Math.round(Number(args.numResults) || 5)));
     let data;
@@ -2654,7 +2654,7 @@ function convertResponsesToChat(respReq) {
   if (respReq.temperature !== undefined) out.temperature = respReq.temperature;
   if (respReq.top_p !== undefined) out.top_p = respReq.top_p;
   if (respReq.parallel_tool_calls !== undefined) out.parallel_tool_calls = respReq.parallel_tool_calls;
-  const eff = normalizeReasoningEffort(respReq.reasoning && typeof respReq.reasoning === 'object' ? respReq.reasoning.effort : undefined);
+  const eff = normaliseReasoningEffort(respReq.reasoning && typeof respReq.reasoning === 'object' ? respReq.reasoning.effort : undefined);
   if (eff) out.reasoning_effort = eff;
   return out;
 }
@@ -2665,7 +2665,7 @@ function convertResponsesToChat(respReq) {
 // 繁中：Responses 的 input_tokens 是總數（cached 為其子集），與 Anthropic 相反故不做減法；實測 total = input + output。
 function buildResponsesUsage(usage, fallbackOutputTokens) {
   const u = usage || {};
-  normalizeUsage(u);
+  normaliseUsage(u);
   const inTok = u.inputTokens || 0;
   const outTok = u.outputTokens || fallbackOutputTokens || 0;
   return {
@@ -2915,7 +2915,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
           finishReason = event.finishReason || null;
           const u = event.totalUsage || event.usage || null;
           if (u) {
-            normalizeUsage(u);
+            normaliseUsage(u);
             usage = u;
             this.inputTokens = u.inputTokens || 0;
             this.outputTokens = u.outputTokens || 0;

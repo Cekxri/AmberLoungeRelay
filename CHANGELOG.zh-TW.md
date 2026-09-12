@@ -8,6 +8,10 @@
 
 ### 修正
 
+- **文件與封裝正確性。** Docker 範例用了大寫 image tag（`CiderCC-UwU:latest`），Docker 會直接拒絕；
+  已改為小寫 `cidercc-uwu:latest`。
+- **統一英式拼字。** 內部函式 `normalize*` 更名為 `normalise*`，符合本專案的 English (UK) 慣例。
+- **繁中錯字。** `README.zh-TW.md` 裡混入的簡體字已修正。
 - **Windows 三支腳本行為一致。** `scripts/start.cmd` 與 `scripts/start-background.cmd` 現在也認
   `PROXY_PORT`，跟 `scripts/stop.cmd` 對齊；要換到別的埠時三個會一起移動。
 - **`scripts/stop.cmd` 會跟著你的埠。** 它依序從 `PROXY_PORT`、`PORT`、`config.json` 解析出真正
