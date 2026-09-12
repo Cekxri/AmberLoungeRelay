@@ -1,0 +1,10 @@
+{
+  "port": 3050,
+  "host": "0.0.0.0",
+  "apiKey": "",
+  "apiBase": "https://api.commandcode.ai",
+  "projectSlug": "cc-proxy",
+  "logFile": "",
+  "logLevel": "info",
+  "zdr": false
+}

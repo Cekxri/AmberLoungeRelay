@@ -1,0 +1,8 @@
+node_modules
+logs
+.git
+.gitignore
+*.bak
+*.bak-*
+*.patch
+.env

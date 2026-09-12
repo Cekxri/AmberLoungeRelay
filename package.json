@@ -1,0 +1,26 @@
+{
+  "name": "amber-lounge-relay",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A chill little relay that turns the Command Code API into OpenAI / Anthropic compatible endpoints ~ UwU",
+  "license": "MIT",
+  "main": "proxy.mjs",
+  "scripts": {
+    "start": "node proxy.mjs",
+    "dev": "node --watch proxy.mjs",
+    "docker:build": "docker build -t amber-lounge-relay:latest .",
+    "docker:build:multi": "docker buildx build --platform linux/amd64,linux/arm64 -t amber-lounge-relay:latest ."
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "command-code",
+    "proxy",
+    "relay",
+    "openai",
+    "anthropic",
+    "responses-api",
+    "uwu"
+  ]
+}
