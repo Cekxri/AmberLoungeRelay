@@ -78,4 +78,30 @@ many search rounds one request may run.
 | Whether history was repaired | `Repaired incomplete tool history { repaired, droppedOrphanResults }` |
 | Upstream complaints | `CC API error` / `CC stream error event` lines |
 
+
+## `tool_search`, and why the relay keeps no tool list
+
+`tool_search` is a **client-side** tool. The Codex App offers it only when the app itself decides to defer
+part of its tool list, and the app is what executes it. This relay never defers anything — every namespace is
+expanded and the model is handed the complete set — so `tool_search` simply never appears. Calling it anyway
+answers `unsupported call`, which is the app saying "I never registered an executor for that", not a relay
+failure.
+
+The relay keeps **no tool list of its own**. Whatever the app declares is forwarded — namespaces expanded on
+the way up, the `namespace` field restored on the way back — so a future app release that adds, renames or
+removes tools flows straight through without touching this project. An invented tool name is a good smoke
+test: declare `future_tool_2030`, ask the model to call it, and the call comes back with exactly that name.
+
+Three things **do** need a relay change:
+
+| Trigger | Why the relay has to move |
+|---|---|
+| A new **wrapper format** for tool declarations (today it is `{"type":"namespace", ...}`) | the expansion step has to learn the new shape |
+| A change in **Command Code's own API** (routes such as `/alpha/web-search`, header names, validation) | the relay talks to that API directly |
+| A **stricter upstream validation rule** (for example "the results of one tool-call group must be contiguous") | the relay has to shape the history to match — see the 2026-09-13 entry in the changelog |
+
+When the app updates, diff the `Tool entries (kept vs ignored)` line in `logs/relay.log`. On 2026-09-13 it
+reported 20 top-level declarations flattening into 60 callable names, with `web_search` declared but
+`tool_search` absent — that is the shape to compare against.
+
 Pull up a stool, set `logLevel` to `info`, and the story is all there. :3

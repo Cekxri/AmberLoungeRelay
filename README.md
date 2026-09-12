@@ -209,8 +209,9 @@ The image is a slim `node:22-alpine`, listens on `3050`, and carries a healthche
 - **Unofficial.** This is a reverse-engineered client for a service that does not officially offer this
   sort of access. Command Code's own terms apply, and the upstream does actively detect plain proxies
   during a handshake — treat that as your risk to weigh, not a bug in the relay.
-- `tool_search` (the client's internal deferred-tool lookup) is not implemented; tools are exposed
-  directly instead, so it is not needed.
+- `tool_search` is the client's own deferred-tool lookup, so it is not implemented here: the relay never
+  defers tools, and if the app ever offers it the app is the one that executes it. See
+  [docs/tool-namespaces.md](docs/tool-namespaces.md).
 - The relay is stateless: `previous_response_id` is rejected on purpose, so send the full context each turn.
 - Horizontal scaling needs sticky hashing on the API key — sessions and device fingerprints live per process.
 - Memory grows with `body size × concurrency`; for public deployments cap bodies and connections at a

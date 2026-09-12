@@ -43,6 +43,9 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Added
 
+- **Documents what the relay does *not* own.** `docs/tool-namespaces.md` now explains that `tool_search` is a
+  client-side tool, that the relay keeps no tool list of its own (so future app tool changes pass straight
+  through), and the three cases that *do* require a relay change.
 - **Docker build in CI.** The workflow builds the image and polls `/health` inside the container, so the
   Dockerfile cannot rot unnoticed.
 
