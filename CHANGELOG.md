@@ -8,6 +8,9 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Every launch leaves a log file.** `scripts/start.cmd` (the one people double-click) kept its output in the
+  console window only, so the log vanished when the window closed; both launchers now default `LOG_FILE` to
+  `logs/relay.log` unless you set one yourself.
 - **Images and notes no longer split a tool-call group.** When one assistant turn called several tools and the
   app inserted an `<image_resize_notice>` (or an image itself) between the results, the upstream answered
   `Tool results are missing for tool calls ...` and the conversation wedged behind a 502. The relay now tracks

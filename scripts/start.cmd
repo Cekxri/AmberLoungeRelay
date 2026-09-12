@@ -14,6 +14,10 @@ set "CC_NONSTREAM_IDLE_MS=300000"
 rem PROXY_PORT moves the relay off 3050; scripts\stop.cmd reads the same variable. :3
 if defined PROXY_PORT set "PORT=%PROXY_PORT%"
 
+rem Whoever starts the relay leaves a log file; default is logs\relay.log. :3
+if not exist "%~dp0..\logs" mkdir "%~dp0..\logs"
+if not defined LOG_FILE set "LOG_FILE=%~dp0..\logs\relay.log"
+
 rem The banner must follow the real port, or it shows a URL that does not exist. :3
 set "SHOW_PORT=%PORT%"
 if not defined SHOW_PORT set "SHOW_PORT=3050"
