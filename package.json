@@ -1,5 +1,5 @@
 {
-  "name": "amber-lounge-uwu",
+  "name": "cidercc-uwu",
   "version": "1.0.0",
   "type": "module",
   "description": "A chill little relay that turns the Command Code API into OpenAI / Anthropic compatible endpoints ~ UwU",
@@ -8,8 +8,8 @@
   "scripts": {
     "start": "node proxy.mjs",
     "dev": "node --watch proxy.mjs",
-    "docker:build": "docker build -t AmberLoungeUwU:latest .",
-    "docker:build:multi": "docker buildx build --platform linux/amd64,linux/arm64 -t AmberLoungeUwU:latest ."
+    "docker:build": "docker build -t CiderCC-UwU:latest .",
+    "docker:build:multi": "docker buildx build --platform linux/amd64,linux/arm64 -t CiderCC-UwU:latest ."
   },
   "engines": {
     "node": ">=18.0.0"

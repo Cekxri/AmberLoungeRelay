@@ -1,5 +1,5 @@
 /**
- * Amber Lounge UwU — a chill little proxy between Command Code and the world of OpenAI / Anthropic clients.
+ * Cider CC UwU — a chill little proxy between Command Code and the world of OpenAI / Anthropic clients.
  *
  * Pull up a stool: this single-file relay turns the Command Code API into OpenAI Chat Completions,
  * Anthropic Messages and OpenAI Responses endpoints. Zero external dependencies, one file, no nonsense. :3
@@ -18,7 +18,7 @@ import { readFileSync, existsSync, appendFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// ── Configuration loading ──────────────────────────
+// ── Configuration loading / 設定載入 ───────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function loadConfig() {
@@ -60,7 +60,7 @@ function loadConfig() {
 
 const CFG = loadConfig();
 
-// ── Fingerprint generation (created automatically on first run) ──
+// ── Fingerprint generation / 裝置指紋產生（首次自動建立）──
 // CPU model to core-count lookup (Windows x64 only)
 const FINGERPRINT_CPUS = [
   { model: '12th Gen Intel(R) Core(TM) i7-12650H', cores: 10 },
@@ -135,7 +135,7 @@ let CC_VERSION = '0.32.3';
 const CC_VERSION_FALLBACK = '0.32.3';
 const CC_VERSION_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h — npm registry refresh interval
 
-// ── Dynamic CC version number (fetched from the npm registry) ──
+// ── Dynamic CC version / 動態 CC 版本號（取自 npm registry）──
 async function refreshCCVersion() {
   try {
     const url = 'https://registry.npmjs.org/command-code/latest';
@@ -158,7 +158,7 @@ setInterval(refreshCCVersion, CC_VERSION_REFRESH_MS);
 //    chunks[] / Buffer.concat / utf8 string / JSON.parse object tree / the tree rebuilt by buildCcRequest / the JSON.stringify payload.
 //    Measured peak ≈ body size × 5.1–7.4 (7MB→+52MB, 20MB→+116MB; a rejected 413 costs only ×1.05).
 //    A 100MB cap therefore means one request can cost ~550MB at worst, and the cap is per request, not global.
-//    For public or multi-user deployments, cap both body size and in-flight count at your reverse proxy (see the README).
+// 繁中：請求體在上游前會存在多份副本，實測峰值約 body × 5.1~7.4；預設 100MB 上限代表單一請求最壞 ~550MB，且是「每請求」不是全域。公開部署請在反向代理同時限制 body 與在途數。
 const MAX_BODY_SIZE = (() => {
   const mb = Number.parseInt(process.env.CC_MAX_BODY_MB ?? '', 10);
   return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 100 * 1024 * 1024;
@@ -167,7 +167,7 @@ const MAX_BODY_SIZE = (() => {
 // not the total duration of the request. The defaults are unchanged (30s / 90s) and can be overridden by environment variable —
 // the official CLI has no upstream idle timeout at all (verified by decompiling command-code@1.50.0:
 // every createApiClient call site passes no timeout), and legitimate thinking stalls can run for hundreds of seconds.
-// If a reasoning model is killed at 30s and triggers an amplified 429 retry loop, raise these two values.
+// 繁中：看門狗只算 reader.read() 的等待、收到 chunk 就重置，不是整支請求的總時長；推理模型被 30 秒誤殺或觸發 429 重試放大時，把這兩個值調大。
 const STREAM_IDLE_TIMEOUT_MS = (() => {
   const ms = Number.parseInt(process.env.CC_STREAM_IDLE_MS ?? '', 10);
   return Number.isFinite(ms) && ms > 0 ? ms : 30000;   // default 30s — abort a stream only when no new data arrives
@@ -186,7 +186,7 @@ const NONSTREAM_IDLE_TIMEOUT_MS = (() => {
 // backstop for running without a reverse proxy; it does not replace the downstream approach, nor does it know who the client is.
 // Memory = in-flight × (0.13MB + 5.5 × body_MB): the body cap bounds one request, this bounds the multiplier.
 // Over the limit it answers 503 + Retry-After (SDKs back off and retry) instead of letting the process be OOM-killed.
-// Default 0 = off, no concurrency limit (behaviour unchanged); switch it on when you want it:
+// 繁中：在途上限預設關閉（0）。記憶體 ≈ 在途數 × (0.13MB + 5.5 × body_MB)；要硬性上界需同時下調 CC_MAX_BODY_MB。
 //   CC_MAX_INFLIGHT=32 npm start
 // Note: the body cap only bounds a single request; this option caps the multiplier. With the default 100MB body cap that is
 // N × 550MB worst case — for a hard memory ceiling, lower CC_MAX_BODY_MB as well.
@@ -206,7 +206,7 @@ const CLIENT_DRAIN_TIMEOUT_MS = (() => {
 let consecutiveTimeouts = 0;
 const TIMEOUT_REDUCE_CONTEXT_THRESHOLD = 3;
 
-// ── Logging ─────────────────────────────────────────
+// ── Logging / 日誌 ──────────────────────────────────
 function log(level, msg, data) {
   const line = `[${new Date().toISOString()}] [${level}] ${msg}${data ? ' ' + JSON.stringify(data) : ''}`;
   console.log(line);
@@ -215,7 +215,7 @@ function log(level, msg, data) {
   }
 }
 
-// ── Session management ──────────────────────────────
+// ── Session management / Session 管理 ───────────────
 // One session per API key, expiring after 12h plus up to 1h of random jitter
 // The same key reuses its session within a cycle and gets a fresh one when it lapses
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;    // 12h
@@ -271,7 +271,7 @@ function getSessionId(incomingHeaders, apiKey, promptCacheKey) {
 // A fresh thread ID for every request
 function newThreadId() { return randomUUID(); }
 
-// ── Per-key state (fingerprint + initialisation throttling) ──
+// ── Per-key state / 每把金鑰的獨立狀態（指紋＋初始化節流）──
 // Every API key gets its own device fingerprint and initialisation timer
 const keyStateStore = new Map(); // apiKey → { fingerprint, nextInitAt }
 
@@ -288,7 +288,7 @@ function getOrCreateKeyState(apiKey) {
   return state;
 }
 
-// ── Initialisation pre-requests (fingerprint + lifecycle; first run, then every 8h ± 2h) ──
+// ── Initialisation pre-requests / 初始化預請求（指紋＋lifecycle；首次後每 8h±2h）──
 const INIT_REFRESH_MS = 8 * 60 * 60 * 1000;    // 8h
 const INIT_JITTER_MS  = 2 * 60 * 60 * 1000;    // 2h of jitter
 
@@ -347,7 +347,7 @@ async function ensureInitialized(apiKey, signal) {
   }
 }
 
-// ── Model list ──────────────────────────────────────
+// ── Model list / 模型清單 ───────────────────────────
 const MODELS = [
   // Anthropic
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
@@ -387,7 +387,7 @@ const MODELS = [
   { id: 'google/gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
 ];
 
-// ── Helper functions ────────────────────────────────
+// ── Helper functions / 輔助函式 ─────────────────────
 
 // Build a fake working directory from the sessionId, then derive a slug using the real CLI’s rules
 // The result looks like "d-users-dev-projects-web-app-a3f2" (matching the real CLI’s slug format)
@@ -398,7 +398,7 @@ function fakeProjectSlug(sessionId) {
   const head = id.slice(0, 4);
   // The sessionId is either a random UUID (first four characters hexadecimal) or a client-supplied
   // prompt_cache_key (such as "my-stable-cache-key-001"). The latter parses as NaN in base 16, which would
-  // turn the slug into "…-undefined-my-s". Fall back to a deterministic character hash when that happens.
+  // 繁中：sessionId 可能是 UUID 或客戶端的 prompt_cache_key；後者以 16 進位解析得到 NaN，會讓 slug 變成 undefined，故改用確定性的字元雜湊。
   let idx = parseInt(head, 16);
   if (!Number.isFinite(idx)) {
     let h = 0;
@@ -434,7 +434,7 @@ function getEnvironment() {
   return `${process.platform}-${process.arch}, Node.js ${process.version.slice(1)}`;
 }
 
-// ── CC request body construction ────────────────────
+// ── CC request body / CC 請求體建構 ─────────────────
 
 function buildCcRequest(openaiReq) {
   const { model, messages, max_tokens, temperature, tools, stream, reasoning_effort, tool_choice, parallel_tool_calls, prompt_cache_key } = openaiReq;
@@ -443,7 +443,7 @@ function buildCcRequest(openaiReq) {
   // Array-style content must be flattened to text and joined into a *string*, not turned into a JSON string,
   // and certainly not emitted as an Anthropic-style content-block array: the upstream insists that
   // params.system is always a string, and rejects arrays outright (verified against the live service:
-  // Validation error: Invalid input: expected string, received array at "params.system"）。
+  // Validation error: Invalid input: expected string, received array at "params.system").
   const systemMsgs = messages.filter(m => m.role === 'system' || m.role === 'developer');
   const systemPrompt = systemMsgs.map(m => {
     if (typeof m.content === 'string') return m.content;
@@ -582,7 +582,7 @@ function buildCcRequest(openaiReq) {
     // thinks it is sitting in CC’s own executable directory — see issue #17). A single space bypasses it;
     // measured on the live service, prompt_tokens dropped from 7653 to 85.
     // On by default; disable with "emptySystemPlaceholder": false in config.json or
-    // CC_EMPTY_SYSTEM_PLACEHOLDER=false (back to the upstream’s native behaviour).
+    // 繁中：params.system 缺省時上游會注入約 7.5K token 的預設提示詞（污染對話又耗 cached token）；送一個空格即可繞過（實測 prompt_tokens 7653 → 85）。
     body.params.system = ' ';
   }
   if (temperature !== undefined) {
@@ -604,7 +604,7 @@ function buildCcRequest(openaiReq) {
     const isNone = (typeof tool_choice === 'string' && tool_choice === 'none') || (tool_choice && typeof tool_choice === 'object' && tool_choice.type === 'none');
     if (isNone) {
       // The upstream accepts only tool_choice.type = auto|any|tool; sending none answers 400.
-      // Equivalent meaning: simply do not offer any tools.
+      // 繁中：上游只接受 auto|any|tool，送 none 會 400；改成「完全不提供 tools」，語意相同。
       delete body.params.tools;
       delete body.params.tool_choice;
     } else
@@ -630,7 +630,7 @@ function tryParseJSON(str) {
   try { return JSON.parse(str); } catch { return {}; }
 }
 
-// ── CC NDJSON → OpenAI SSE conversion ───────────────
+// ── CC NDJSON → OpenAI SSE / NDJSON 轉 SSE ─────────
 
 function createSseTranslator(model, completionId, created) {
   let chunkIndex = 0;
@@ -781,12 +781,12 @@ function normalizeUsage(u) {
 
 // CC’s inputTokens is a *total* (cache hits included), whereas Anthropic’s input_tokens counts only
 // the non-cached part — as the official SDK notes: "Total input tokens in a request is the summation of
-// `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`。
+// `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`.
 // Forwarding CC’s inputTokens as input_tokens makes downstream clients treat the two as disjoint,
 // so they add up to roughly twice the real input (issue #25).
 //
 // CC already computes what we need: inputTokenDetails.noCacheTokens (measured: noCacheTokens + cacheReadTokens
-// === inputTokens). Prefer that field; fall back to subtraction so older upstreams still get the right number.
+// 繁中：CC 的 inputTokens 已含快取命中，而 Anthropic 的 input_tokens 只算非快取；直接轉發會讓下游相加約為真實輸入兩倍（issue #25）。優先用 noCacheTokens，缺失時退迴減法。
 function anthropicInputTokens(usage, noCacheOverride) {
   const u = usage || {};
   if (typeof noCacheOverride === 'number' && noCacheOverride >= 0) return noCacheOverride;
@@ -806,7 +806,7 @@ function mapFinishReason(reason) {
   }
 }
 
-// ── Error mapping ───────────────────────────────────
+// ── Error mapping / 錯誤映射 ────────────────────────
 const CC_STATUS_MAP = {
   400: { status: 400, type: 'invalid_request_error' },
   401: { status: 401, type: 'authentication_error' },
@@ -865,7 +865,7 @@ function mapCcEventError(event) {
   return { status: mapped.status, body: { error: { message, type: mapped.type } } };
 }
 
-// ── HTTP request handling ───────────────────────────
+// ── HTTP request handling / HTTP 請求處理 ───────────
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -875,7 +875,7 @@ function readBody(req) {
     let drained = 0;
     // After a 413, switch to drain mode: keep reading and discarding the rest of the body so the keep-alive
     // connection stays reusable, and make sure the client actually sees a 413 rather than a connection reset (issue #7).
-    // If the client ignores the 413 and keeps uploading past DRAIN_LIMIT, cut it off rather than swallow bandwidth for ever.
+    // 繁中：413 後進入排空模式，讓 keep-alive 可重用、客戶端明確收到 413 而非連線重置；超過 DRAIN_LIMIT 則強制切斷。
     const DRAIN_LIMIT = 32 * 1024 * 1024;
     req.on('data', c => {
       if (settled) {
@@ -909,7 +909,7 @@ function readBody(req) {
 // Ignoring it lets the whole upstream stream pile up in memory — with a client that never reads, RSS grows with the stream (issue #20).
 // Listen for close/error as well, or a client disconnect leaves the request coroutine parked for ever.
 // With CLIENT_DRAIN_TIMEOUT_MS > 0 an extra idle watchdog destroys the response on timeout,
-// which fires the existing res close handler → aborted=true → the CC upstream is aborted, with no changes at the call sites.
+// 繁中：忽略 res.write() 的 false 會讓上游流在記憶體無界堆積（issue #20）；必須同時監聽 close/error，否則客戶端斷線會讓協程永久掛住。
 function waitDrain(res) {
   if (!res.writableNeedDrain) return Promise.resolve();
   return new Promise((resolve) => {
@@ -937,7 +937,7 @@ function waitDrain(res) {
 // Upstream read-idle watchdog: one shared timer, instead of “a fresh setTimeout per chunk that is never cleared”.
 // Measured cost is ~225B per pending timer; steady state = throughput × timeout window × chunks per response × 225B
 // (50 rps × 2000 chunks × 30s ≈ 644MB; the 90s non-streaming window is about three times that).
-// arm() uses refresh() to reset the window to “this read started”, matching the original semantics: the timeout counts only reader.read() waits.
+// 繁中：單一定時器重複使用，避免「每個 chunk 新建 setTimeout 且從不清理」的記憶體滯留；arm() 以 refresh() 把窗口重設為本輪 read 開始。
 function createIdleWatchdog(timeoutMs) {
   let rejectFn = null;
   const expired = new Promise((_, reject) => { rejectFn = reject; });
@@ -974,7 +974,7 @@ function getApiKey(headers) {
   return null;
 }
 
-// ── Streaming relay ─────────────────────────────────
+// ── Streaming relay / 串流轉發 ──────────────────────
 
 async function forwardToCC(body, apiKey, incomingHeaders = {}, signal, promptCacheKey) {
   const url = `${CFG.apiBase}/alpha/generate`;
@@ -1007,7 +1007,7 @@ async function forwardToCC(body, apiKey, incomingHeaders = {}, signal, promptCac
   return response;
 }
 
-// ── Routing ─────────────────────────────────────────
+// ── Routing / 路由 ──────────────────────────────────
 
 async function handleChatCompletions(req, res) {
   let openaiReq;
@@ -1099,6 +1099,7 @@ async function handleChatCompletions(req, res) {
       // ── Streaming response ──
       translator = createSseTranslator(model, completionId, created);
       let buffer = '';
+      // 繁中：延後送出 200 標頭，讓逾時／零輸出時能改回 JSON 429/502，交由 SDK 自動重試。
       let started = false; // delay the 200 header so timeouts/zero output can be answered as JSON 429/502 and retried by the SDK
       const decoder = new TextDecoder();
       reader = ccResponse.body.getReader();
@@ -1115,7 +1116,7 @@ async function handleChatCompletions(req, res) {
           const chunkText = decoder.decode(value, { stream: true });
           buffer += chunkText;
           // Split only when the new data contains a newline: the buffer never retains a newline, so no newline means no complete line.
-          // Avoids repeatedly splitting a growing single line (large tool-call / tool_result) — O(n²) → O(n).
+          // 繁中：只在收到換行時才切分，避免對不斷增長的單行反覆全量 split（O(n²) → O(n)）。
           let lines = [];
           if (chunkText.indexOf('\n') !== -1) {
             lines = buffer.split('\n');
@@ -1379,7 +1380,7 @@ async function handleChatCompletions(req, res) {
   }
 }
 
-// ── Anthropic /v1/messages protocol conversion ──────
+// ── Anthropic /v1/messages conversion / 協定轉換 ───
 
 function mapAnthropicStopReason(finishReason) {
   switch (finishReason) {
@@ -1428,7 +1429,7 @@ function buildAnthropicResponse(model, fullText, toolCalls, finishReason, usage,
       const estOut = Math.max(1,
         Math.ceil(((fullText || '').length + (thinkingText || '').length) / 4) + (toolCalls ? toolCalls.length * 20 : 0));
       return {
-        // input_tokens counts only the non-cached part (Anthropic semantics); adding the cache_* fields gives the total input
+        // 繁中：input_tokens 只計非快取部分（Anthropic 語意），與 cache_* 相加才是總輸入。
         input_tokens: anthropicInputTokens(usage),
         output_tokens: usage?.outputTokens || estOut,
         cache_creation_input_tokens: usage?.inputTokenDetails?.cacheWriteTokens ?? 0,
@@ -1474,7 +1475,7 @@ function convertAnthropicToOpenAI(anthropicReq) {
     if (msg.role === 'assistant') {
       let textContent = '';
       // Anthropic thinking blocks carry the reasoning text, which must become reasoning_content
-      // so buildCcRequest sends it back; otherwise CC refuses the request for missing reasoning
+      // 繁中：Anthropic 的 thinking block 要轉成 reasoning_content 回傳，否則 CC 會因缺少 reasoning 而拒絕。
       let thinkingContent = '';
       const toolCalls = [];
       const blocks = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: msg.content || '' }];
@@ -1519,7 +1520,7 @@ function convertAnthropicToOpenAI(anthropicReq) {
       }
       if (textContent) {
         // Held back so tool_results are queued first: OpenAI semantics require tool messages to follow the assistant’s
-        // tool_calls immediately, and text in the same user message must come after the tool results
+        // 繁中：OpenAI 語意要求 tool 訊息緊跟 assistant 的 tool_calls；同一則 user 訊息裡的文字要排在工具結果之後。
       }
       for (const tr of toolResults) {
         const toolContent = typeof tr.content === 'string' ? tr.content
@@ -1527,7 +1528,7 @@ function convertAnthropicToOpenAI(anthropicReq) {
           : String(tr.content || '');
         // The name on an OpenAI tool message is optional; when resuming a session, the tool_use_id may have no
         // matching assistant tool_use (the client trimmed the history), so do not force an empty name —
-        // that makes the CC upstream complain "Tool result is missing" (issue #15)
+        // 繁中：恢復對話時可能找不到對應的 tool_use（歷史被裁剪），此時不要硬塞空 name，否則上游會報 "Tool result is missing"（issue #15）。
         const toolMsg = { role: 'tool', tool_call_id: tr.tool_use_id, content: toolContent };
         if (toolNameFromId[tr.tool_use_id]) toolMsg.name = toolNameFromId[tr.tool_use_id];
         openaiMessages.push(toolMsg);
@@ -1787,7 +1788,7 @@ async function* createAnthropicSseTranslator(response, model, messageId, ctx) {
 
     // Whether or not the upstream reports usage, sync the local counters into ctx (zero-output detection and timeout logs rely on them).
     // Note: ctx.inputTokens holds the upstream’s raw total, for log forensics only;
-    // message_delta’s input_tokens goes through anthropicInputTokens / noCacheTokens, not this.
+    // 繁中：本地計數同步進 ctx 供零輸出判定與逾時日誌使用；ctx.inputTokens 是上游原始總數，僅供排查，message_delta 走換算。
     ctx.inputTokens = inputTokens;
     ctx.outputTokens = outputTokens;
     ctx.cachedInputTokens = cachedInputTokens;
@@ -2160,7 +2161,7 @@ async function handleMessages(req, res) {
   }
 }
 
-// ── Dynamic model list ──────────────────────────────
+// ── Dynamic model list / 動態模型清單 ───────────────
 
 let dynamicModels = null;
 let modelsLastFetch = 0;
@@ -2204,11 +2205,11 @@ async function fetchModels(apiKey) {
   return MODELS;
 }
 
-// ── OpenAI Responses API（/v1/responses）──────────────
+// ── OpenAI Responses API / Responses 端點 ───────────
 // For clients that speak the Responses protocol (Codex and friends). The relay stays a stateless translation layer:
 // it translates input into the internal Chat format and reuses the same CC forwarding pipeline.
 // previous_response_id / store are not supported (they need server-side conversation state, which conflicts with
-// the stateless design); those requests get a 400 rather than silently degrading into wrong answers.
+// 繁中：Responses 端點把 input 轉成內部 Chat 格式後重用同一條 CC 管線；不支援 previous_response_id / store（需伺服器端保存，與無狀態衝突），收到直接 400。
 
 function responsesTextOf(content) {
   if (typeof content === 'string') return content;
@@ -2228,7 +2229,7 @@ function newResponsesId(prefix) {
 }
 
 // The Command Code upstream accepts only low|medium|high|xhigh|max (ultra answers 400 invalid option in testing).
-// Codex / cc-switch send ultra, minimal, none and friends; they are normalised here, and unknown values are dropped.
+// 繁中：Codex／cc-switch 會送 ultra、minimal、none 等值，這裡統一收斂（ultra→max、minimal/none/off→low），無法識別的就丟棄。
 const CC_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 function normalizeReasoningEffort(value) {
   if (value === undefined || value === null) return undefined;
@@ -2259,7 +2260,7 @@ function responsesContentToChat(content) {
   return parts;
 }
 
-// Parse the “maximum context length” error so the completion budget can be lowered automatically and retried.
+// 繁中：解析「maximum context length」錯誤，自動降低 completion 預算並重試一次。
 function parseContextLimitError(text) {
   if (!text || !/maximum context length/i.test(text)) return null;
   const limit = Number((text.match(/maximum context length is (\d+)/i) || [])[1]);
@@ -2282,7 +2283,7 @@ function debugToolsLog(entry) {
 
 // Tool output (a screenshot returned by view_image, say) often carries very long base64; sent as plain text,
 // the upstream bills it as *text tokens* (measured: 2.2M characters ≈ 1.53M tokens) and one turn blows the 1M context.
-// So the data URL is pulled out, re-sent as an image, and over-long output is truncated.
+// 繁中：工具輸出常含超長 base64（例如 view_image 的截圖）；當文字送出會被上游以文字 token 計價（實測 220 萬字 ≈ 153 萬 token）。這裡把 data URL 抽出改用圖片重送，並截斷超長輸出。
 const MAX_TOOL_OUTPUT_CHARS = (() => { const n = Number.parseInt(process.env.CC_MAX_TOOL_OUTPUT_CHARS ?? '', 10); return Number.isFinite(n) && n > 0 ? n : 100000; })();
 const DATA_URL_RE = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi;
 function extractToolOutput(item) {
@@ -2301,8 +2302,8 @@ function extractToolOutput(item) {
   return { text, images };
 }
 
-// ── Command Code’s built-in web tools (client-executed; the relay runs them on the client’s behalf) ──
-// CLI 1.53.1：POST /alpha/web-search {query,numResults,allowedDomains?,blockedDomains?}
+// ── Built-in web tools / 內建網路工具（客戶端執行，由反代代跑）──
+// CLI 1.53.1: POST /alpha/web-search {query,numResults,allowedDomains?,blockedDomains?}
 //             POST /alpha/web-fetch  {url,format} → {content,url,status}
 const MAX_WEB_ROUNDS = (() => { const n = Number.parseInt(process.env.CC_MAX_WEB_ROUNDS ?? '', 10); return Number.isFinite(n) && n > 0 ? Math.min(8, n) : 3; })();
 const WEB_SEARCH_NAME = "web_search";
@@ -2420,7 +2421,7 @@ async function executeCcWebTool(name, argsRaw, apiKey, incomingHeaders, promptCa
 
 // When a client interrupts a turn, the history can keep a tool_call with no tool result, or an orphaned tool result.
 // The upstream (DeepSeek/CC) rejects that outright — “Tool result is missing for tool call <id>” — and the conversation wedges.
-// Repaired automatically here: a missing result gets an explanatory one, and orphaned results are dropped.
+// 繁中：客戶端中斷回合時，歷史可能留下沒有結果的 tool_call（上游會直接拒絕並讓對話卡死）；這裡自動補一筆說明，孤兒結果則丟棄。
 function repairToolCallPairs(messages) {
   const callIds = new Set();
   for (const msg of messages) {
@@ -2460,7 +2461,7 @@ function convertResponsesToChat(respReq) {
   const messages = [];
   // Images inside tool output must be inserted *after* the whole group of tool results;
   // inserting them in between puts a user message between assistant(tool_calls) and the later tool results,
-  // and the upstream then reports “Tool results are missing” (measured 502 on DeepSeek).
+  // 繁中：工具輸出裡的圖片必須延後到整組 tool results 之後才插入，否則會在 assistant(tool_calls) 與結果之間夾一條 user 訊息，上游會判定 missing（DeepSeek 實測 502）。
   const deferredImageMsgs = [];
   const nsByToolName = new Map();
   // ==== Experiment: namespace alias probe (off by default; CC_NAMESPACE_ALIAS_PROBE=1 enables it) ====
@@ -2581,8 +2582,8 @@ function convertResponsesToChat(respReq) {
   let tools;
   if (Array.isArray(respReq.tools) && respReq.tools.length) {
     // Newer Codex-App builds wrap tools in a namespace, for example
-    // {"type":"namespace","name":"mcp__node_repl","tools":[{"name":"js",...}]}。
-    // Expanding them into a flat function list keeps js / sub-tools visible to the model (otherwise Computer Use breaks).
+    // {"type":"namespace","name":"mcp__node_repl","tools":[{"name":"js",...}]}.
+    // 繁中：新版 Codex App 會把工具包在 namespace 裡；展開成扁平 function 清單，模型才看得到 js 等子工具（否則 Computer Use 會失效）。
     const flattened = [];
     const collect = (entry, depth, nsName) => {
       if (!entry || typeof entry !== 'object' || depth > 4) return;
@@ -2632,7 +2633,7 @@ function convertResponsesToChat(respReq) {
 
   const rawWebTools = Array.isArray(respReq.tools) ? respReq.tools : [];
   const wantsWebSearch = rawWebTools.some((t) => t && (t.type === "web_search" || t.type === "web_search_preview"));
-  // The app only sends web_search; inject web_fetch alongside it (the relay runs both, matching the CC CLI’s behaviour)
+  // 繁中：App 只送 web_search；這裡一併注入 web_fetch，兩者都由代理代跑（與 CC CLI 行為一致）。
   const wantsWebFetch = wantsWebSearch || rawWebTools.some((t) => t && t.type === "web_fetch");
   if (wantsWebSearch || wantsWebFetch) {
     tools = tools || [];
@@ -2661,7 +2662,7 @@ function convertResponsesToChat(respReq) {
 // Responses’ input_tokens is a total, with cached / cache_write as subsets of it —
 // the opposite of Anthropic (where cache_read is a separate increment and must be subtracted — see issue #25).
 // Our upstream CC also includes cache hits in inputTokens, so it is passed through without subtraction.
-// Measured: total_tokens === input_tokens + output_tokens (even when cached dominates).
+// 繁中：Responses 的 input_tokens 是總數（cached 為其子集），與 Anthropic 相反故不做減法；實測 total = input + output。
 function buildResponsesUsage(usage, fallbackOutputTokens) {
   const u = usage || {};
   normalizeUsage(u);
@@ -2749,7 +2750,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
   const toolNameMap = (opts && opts.toolNameMap) || null;
   const toolNamespaces = (opts && opts.toolNamespaces) || null;
   const SEND_NAMESPACE_FIELD = process.env.CC_SEND_NAMESPACE_FIELD !== '0';
-  // A model may send the bare name, ns::tool or ns__tool; all three resolve to (name, namespace).
+  // 繁中：模型可能送出短名、ns::tool 或 ns__tool，三種都統一解析成 (name, namespace)。
   const resolveToolCall = (rawName) => {
     const nm = String(rawName || '');
     if (toolNamespaces && toolNamespaces.has(nm)) return { name: nm, namespace: toolNamespaces.get(nm) };
@@ -3380,7 +3381,7 @@ function handleHealth(req, res) {
   res.end('OK');
 }
 
-// ── Server ──────────────────────────────────────────
+// ── Server / 伺服器 ─────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
   // CORS
@@ -3411,7 +3412,7 @@ const server = http.createServer(async (req, res) => {
     }
     inflightCount++;
     // Release timing: when the response finishes or the connection closes — whichever comes first, and idempotent,
-    // so no exit path (success, error, client disconnect, timeout) can leak a slot.
+    // 繁中：槽位在回應完成或連線關閉時釋放（取先到者且冪等），確保任何退出路徑都不會漏掉槽位。
     let released = false;
     const release = () => {
       if (released) return;
@@ -3452,7 +3453,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 server.listen(CFG.port, CFG.host, () => {
-  log('info', 'Amber Lounge UwU is open ~ pull up a stool :3', {
+  log('info', 'Cider CC UwU is open ~ pull up a stool :3', {
     webTools: 'web_search/web_fetch internal execution on',
     aliasProbe: (process.env.CC_NAMESPACE_ALIAS_PROBE === '1') ? ('on: ' + (process.env.CC_ALIAS_PROBE_TOOL || 'list_threads')) : 'off',
     url: `http://${CFG.host}:${CFG.port}`,

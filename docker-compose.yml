@@ -1,5 +1,5 @@
 services:
-  amber-lounge-uwu:
+  cidercc-uwu:
     build: .
     ports:
       - "${PROXY_PORT:-3050}:3050"

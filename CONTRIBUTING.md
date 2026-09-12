@@ -2,6 +2,8 @@
 
 Ta for wanting to help. A few house rules keep the bar tidy.
 
+**Traditional Chinese version: [CONTRIBUTING.zh-TW.md](CONTRIBUTING.zh-TW.md)**
+
 ## Language
 
 - **English (UK) first.** Colour, licence, behaviour, customise, organise. The source comments and the
@@ -12,8 +14,8 @@ Ta for wanting to help. A few house rules keep the bar tidy.
 ## Getting set up
 
 ```bash
-git clone https://github.com/Cekxri/AmberLoungeUwU.git
-cd AmberLoungeUwU
+git clone https://github.com/Cekxri/CiderCC-UwU.git
+cd CiderCC-UwU
 npm start          # no install step — there are no dependencies
 ```
 

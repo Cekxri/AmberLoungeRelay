@@ -1,16 +1,16 @@
-# Amber Lounge UwU :3
+# Cider CC UwU :3
 
 > A chill little relay between **Command Code** and the wider world of OpenAI / Anthropic clients.
 > Pull up a stool, pick your pour, and let the models flow ~ UwU
 
-Amber Lounge UwU is a single-file, zero-dependency reverse proxy. It takes the Command Code API and
+Cider CC UwU is a single-file, zero-dependency reverse proxy. It takes the Command Code API and
 serves it up as **OpenAI Chat Completions**, **Anthropic Messages** and **OpenAI Responses** endpoints,
 so your favourite client can sip from a subscription that was never really meant to be this sociable. :3
 
 It is a heavily patched fork of [MAXeaglet/commandcode-proxy](https://github.com/MAXeaglet/commandcode-proxy),
 brewed over far too many late nights and with a healthy respect for other people's licences.
 
-**繁體中文（台灣）說明：[README.zh-TW.md](README.zh-TW.md)**
+**Traditional Chinese documentation: [README.zh-TW.md](README.zh-TW.md)**
 
 ---
 
@@ -33,8 +33,8 @@ brewed over far too many late nights and with a healthy respect for other people
 ## Quick start
 
 ```bash
-git clone https://github.com/Cekxri/AmberLoungeUwU.git
-cd AmberLoungeUwU
+git clone https://github.com/Cekxri/CiderCC-UwU.git
+cd CiderCC-UwU
 npm start        # config.json ships listening on http://0.0.0.0:3050
 ```
 
@@ -183,7 +183,7 @@ and feeds the results back to the model. More notes in [docs/tool-namespaces.md]
 
 ```bash
 docker compose up -d                       # or: PROXY_PORT=13050 docker compose up -d
-docker build -t AmberLoungeUwU:latest . # if you prefer building by hand
+docker build -t CiderCC-UwU:latest . # if you prefer building by hand
 ```
 
 The image is a slim `node:22-alpine`, listens on `3050`, and carries a healthcheck on `/health`.
@@ -224,7 +224,7 @@ The image is a slim `node:22-alpine`, listens on `3050`, and carries a healthche
 
 - **Original project:** [MAXeaglet/commandcode-proxy](https://github.com/MAXeaglet/commandcode-proxy) (MIT) —
   the relay started life there, and this fork keeps that licence and that debt.
-- **Amber Lounge UwU patches:** tool-namespace bridge, inline web tools, image-aware tool results,
+- **Cider CC UwU patches:** tool-namespace bridge, inline web tools, image-aware tool results,
   reasoning-effort clamping, incomplete-history repair, and a pile of small robustness fixes.
 
 ## Licence
