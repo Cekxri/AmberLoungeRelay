@@ -32,7 +32,7 @@ Amber Lounge Relay 是一個單檔、零外部依賴的反向代理。它把 Com
 
 ```bash
 git clone https://github.com/Cekxri/AmberLoungeRelay.git
-cd amber-lounge-relay
+cd AmberLoungeRelay
 npm start        # 專案附的 config.json 會聽 http://0.0.0.0:3050
 ```
 
@@ -85,6 +85,11 @@ curl http://127.0.0.1:3050/v1/chat/completions \
 | `CC_SEND_NAMESPACE_FIELD` | 工具呼叫的 namespace 欄位 | 預設開；未來客戶端不用了可設 `0` |
 | `CC_REJECT_NAMESPACE_TOOLS` | 強制退回扁平工具（實驗） | 預設關；設 `1` 會拒絕 namespace 工具 |
 | `CC_MAX_TOOL_OUTPUT_CHARS` | 工具輸出截斷長度 | 預設 `100000` 字元 |
+| `CC_NAMESPACE_ALIAS_PROBE` | namespace 別名探針 | 預設關；設 `1` 會多暴露短名／`ns__tool`／`ns::tool` 三種別名（診斷用） |
+| `CC_ALIAS_PROBE_TOOL` | 探針針對哪個工具 | 預設 `list_threads` |
+| `CC_EMPTY_SYSTEM_PLACEHOLDER` | 空 system prompt 的空格佔位 | 預設開；設 `false` 關閉 |
+| `CC_CLIENT_DRAIN_TIMEOUT_MS` | 僵死客戶端保護 | 預設未設；例如 `60000` 會丟掉停止讀取的卡住客戶端 |
+| `CC_DEBUG_TOOLS` | 工具清單除錯日誌 | 設 `1` 會把收到的工具清單寫進 `tools-debug.log` |
 
 ## 端點
 

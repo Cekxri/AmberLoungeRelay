@@ -34,7 +34,7 @@ brewed over far too many late nights and with a healthy respect for other people
 
 ```bash
 git clone https://github.com/Cekxri/AmberLoungeRelay.git
-cd amber-lounge-relay
+cd AmberLoungeRelay
 npm start        # config.json ships listening on http://0.0.0.0:3050
 ```
 
@@ -89,6 +89,11 @@ Environment variables override the file, which is handy for Docker and for that 
 | `CC_SEND_NAMESPACE_FIELD` | namespace field in tool calls | default on; set to `0` if a future client stops wanting it |
 | `CC_REJECT_NAMESPACE_TOOLS` | flat-tool fallback experiment | default off; set to `1` to refuse namespace tools |
 | `CC_MAX_TOOL_OUTPUT_CHARS` | tool-output truncation | default `100000` characters |
+| `CC_NAMESPACE_ALIAS_PROBE` | namespace alias probe | off by default; set to `1` to expose short / `ns__tool` / `ns::tool` aliases for diagnosis |
+| `CC_ALIAS_PROBE_TOOL` | which tool the alias probe targets | default `list_threads` |
+| `CC_EMPTY_SYSTEM_PLACEHOLDER` | space placeholder for empty system prompts | on by default; set to `false` to disable |
+| `CC_CLIENT_DRAIN_TIMEOUT_MS` | stalled-client guard | unset by default; for example `60000` drops a client that stops draining |
+| `CC_DEBUG_TOOLS` | tool-list debug log | set to `1` to write the received tool list to `tools-debug.log` |
 
 ## Endpoints
 
