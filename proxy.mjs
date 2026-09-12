@@ -207,7 +207,13 @@ let consecutiveTimeouts = 0;
 const TIMEOUT_REDUCE_CONTEXT_THRESHOLD = 3;
 
 // ── Logging / 日誌 ──────────────────────────────────
+// 繁中：logLevel 現在真的會過濾 —— error < warn < info < debug（預設 info）。
+// English: logLevel now actually filters — error < warn < info < debug (default info).
+const LOG_LEVEL_ORDER = { error: 0, warn: 1, info: 2, debug: 3 };
+const LOG_LEVEL_FLOOR = LOG_LEVEL_ORDER[String(CFG.logLevel || 'info').toLowerCase()] ?? LOG_LEVEL_ORDER.info;
+
 function log(level, msg, data) {
+  if ((LOG_LEVEL_ORDER[level] ?? LOG_LEVEL_ORDER.info) > LOG_LEVEL_FLOOR) return;
   const line = `[${new Date().toISOString()}] [${level}] ${msg}${data ? ' ' + JSON.stringify(data) : ''}`;
   console.log(line);
   if (CFG.logFile) {
@@ -283,7 +289,9 @@ function getOrCreateKeyState(apiKey) {
       nextInitAt: 0,
     };
     keyStateStore.set(apiKey, state);
-    log('info', 'Fingerprint generated for key', { keyPrefix: apiKey.slice(0, 8) });
+    // 繁中：只記錄金鑰的不可逆短雜湊，永不記錄金鑰片段（key prefix 曾違反本專案的隱私規則）。
+    // English: log an irreversible short hash of the key only — never a key fragment.
+    log('info', 'Fingerprint generated for key', { keyHash: crypto.createHash('sha256').update(apiKey).digest('hex').slice(0, 8) });
   }
   return state;
 }
@@ -3462,6 +3470,7 @@ server.listen(CFG.port, CFG.host, () => {
     session: '12h + 1h jitter, per API key',
     zdr: CFG.zdr ? 'enabled (x-cmd-zdr: 1 on generation/init requests)' : 'off (CMD_ZDR=1 or per-request x-cmd-zdr: 1 to enable)',
     emptySystemPlaceholder: CFG.emptySystemPlaceholder ? 'on (space placeholder for requests without system prompt, issue #17)' : 'off',
+    logLevel: CFG.logLevel || 'info',
     logFile: CFG.logFile || '(console only)',
     clientDrainTimeout: CLIENT_DRAIN_TIMEOUT_MS > 0 ? `${CLIENT_DRAIN_TIMEOUT_MS}ms` : 'disabled',
     idleTimeouts: `stream ${STREAM_IDLE_TIMEOUT_MS}ms / nonstream ${NONSTREAM_IDLE_TIMEOUT_MS}ms`,

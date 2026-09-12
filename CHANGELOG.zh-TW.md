@@ -8,6 +8,16 @@
 
 ### 修正
 
+- **金鑰片段不再進日誌。** `Fingerprint generated for key` 這行原本會印出 API key 的前八個字元，
+  現在改成不可逆的短雜湊。README 早就承諾過這件事 —— 現在程式真的做到了。
+- **`logLevel` 真的會過濾。** 它一直被接受、也被寫進文件，但程式從沒讀過；現在 `error`、`warn`、
+  `info`、`debug` 會照文件運作（預設 `info`），啟動那行也會回報目前等級。
+- **設定表照實寫。** `emptySystemPlaceholder` 明明程式有支援、卻漏在 `config.json` 表格外；
+  `projectSlug`／`PROJECT_SLUG` 也改成照實描述 —— 只為相容而保留，送上上游的 slug 是刻意隨機化的。
+- **CHANGELOG 標題重新渲染。** 兩份 CHANGELOG 都少了一個空行，害 `1.0.0` 標題被前一條清單吃掉，
+  GitHub 上根本看不到那個標題。
+- **Windows 橫幅會跟著埠跑。** `scripts/start.cmd` 之前即使 `PROXY_PORT` 換了埠、橫幅還是印 `3050`；
+  現在會顯示實際使用的埠。
 - **文件與封裝正確性。** Docker 範例用了大寫 image tag（`CiderCC-UwU:latest`），Docker 會直接拒絕；
   已改為小寫 `cidercc-uwu:latest`。
 - **統一英式拼字。** 內部函式 `normalize*` 更名為 `normalise*`，符合本專案的 English (UK) 慣例。
@@ -22,6 +32,7 @@
 ### 新增
 
 - **CI 會建 Docker 映像。** 工作流程會建置映像並在容器內輪詢 `/health`，Dockerfile 不會悄悄爛掉。
+
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是

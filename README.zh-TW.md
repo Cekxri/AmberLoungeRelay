@@ -61,20 +61,22 @@ curl http://127.0.0.1:3050/v1/chat/completions \
 | `port` | `3000`（專案附 `3050`） | 監聽埠 |
 | `host` | `0.0.0.0` | 監聽位址。只想本機用就改 `127.0.0.1` |
 | `apiBase` | `https://api.commandcode.ai` | 上游 Command Code 網址 |
-| `projectSlug` | `cc-proxy` | `x-project-slug` 標頭的值 |
+| `projectSlug` | `cc-proxy` | 只為相容而保留 —— 代理故意每次 session 送一個隨機化的 slug，用來對上 CLI 的 handshake |
 | `apiKey` | `""` | 選用的本機備援金鑰；留空、改用「每次請求帶」最乾淨 |
 | `logFile` | `""` | 日誌檔路徑；留空就只輸出到主控台 |
-| `logLevel` | `info` | 日誌等級 |
+| `logLevel` | `info` | 日誌等級：`error`、`warn`、`info`、`debug` |
 | `useProviderModels` | `true` | 是否向上游動態抓模型清單 |
 | `modelRefreshIntervalMs` | `300000` | 模型清單快取時間（5 分鐘） |
 | `zdr` | `false` | 向上游要求零資料留存（ZDR）路由 |
+| `emptySystemPlaceholder` | `true` | 請求沒有 system prompt 時送一個空格，避免上游注入它自己 ~7.5K token 的預設提示詞（issue #17） |
 
 環境變數會覆蓋檔案設定，Docker 或特殊部署特別好用：
 
 | 變數 | 覆蓋 | 說明 |
 |---|---|---|
 | `PORT` / `HOST` | `port` / `host` | |
-| `CC_API_BASE` / `PROJECT_SLUG` | `apiBase` / `projectSlug` | |
+| `CC_API_BASE` | `apiBase` | |
+| `PROJECT_SLUG` | `projectSlug` | 只為相容而保留；送上上游的 slug 是刻意隨機化的 |
 | `LOG_FILE` | `logFile` | |
 | `CC_USE_PROVIDER_MODELS` | `useProviderModels` | 設 `false` 用內建清單 |
 | `CC_STREAM_IDLE_MS` | 串流閒置看門狗 | 預設 `30000`；推理模型請調大 |

@@ -8,6 +8,19 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Key fragments never reach the log.** The `Fingerprint generated for key` line printed the first eight
+  characters of your API key; it now prints an irreversible short hash instead. The README already promised
+  this — now the code keeps the promise.
+- **`logLevel` filters for real.** It was accepted and documented but never read, so every level was written;
+  `error`, `warn`, `info` and `debug` now behave as documented (default `info`), and the startup line reports
+  the active level.
+- **Config table tells the truth.** `emptySystemPlaceholder` was missing from the `config.json` table even
+  though the code honours it, and `projectSlug` / `PROJECT_SLUG` now say what they are — accepted for
+  compatibility, with the slug sent upstream randomised on purpose.
+- **Changelog headings render again.** A missing blank line in both changelogs had glued the `1.0.0` heading
+  onto the previous list item, so GitHub swallowed it.
+- **The Windows banner follows the port.** `scripts/start.cmd` printed `3050` even when `PROXY_PORT` moved the
+  relay elsewhere; it now shows the port actually in use.
 - **Docs and packaging accuracy.** The Docker examples used an uppercase image tag (`CiderCC-UwU:latest`),
   which Docker rejects — they now use the lowercase `cidercc-uwu:latest`.
 - **UK spelling everywhere.** Internal helpers `normalize*` are now `normalise*`, matching the project's
@@ -24,6 +37,7 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 - **Docker build in CI.** The workflow builds the image and polls `/health` inside the container, so the
   Dockerfile cannot rot unnoticed.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

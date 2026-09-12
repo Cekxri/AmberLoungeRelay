@@ -66,20 +66,22 @@ background and stop scripts together.
 | `port` | `3000` (repo ships `3050`) | Listen port |
 | `host` | `0.0.0.0` | Listen address. Use `127.0.0.1` if you only want it on this machine |
 | `apiBase` | `https://api.commandcode.ai` | Upstream Command Code base URL |
-| `projectSlug` | `cc-proxy` | Value for the `x-project-slug` header |
+| `projectSlug` | `cc-proxy` | Accepted for compatibility only — the relay deliberately sends a randomised slug per session to match the CLI handshake |
 | `apiKey` | `""` | Optional fallback key. Leave empty and send the key per request instead |
 | `logFile` | `""` | Log file path. Empty means console only |
-| `logLevel` | `info` | Log level |
+| `logLevel` | `info` | Log verbosity: `error`, `warn`, `info` or `debug` |
 | `useProviderModels` | `true` | Fetch the model list live from the provider API |
 | `modelRefreshIntervalMs` | `300000` | Model-list cache lifetime (5 minutes) |
 | `zdr` | `false` | Ask upstream for zero-data-retention routing |
+| `emptySystemPlaceholder` | `true` | Send a single space when a request has no system prompt, so the upstream does not inject its ~7.5K-token default prompt (issue #17) |
 
 Environment variables override the file, which is handy for Docker and for that one weird deployment:
 
 | Variable | Overrides | Notes |
 |---|---|---|
 | `PORT` / `HOST` | `port` / `host` | |
-| `CC_API_BASE` / `PROJECT_SLUG` | `apiBase` / `projectSlug` | |
+| `CC_API_BASE` | `apiBase` | |
+| `PROJECT_SLUG` | `projectSlug` | Accepted for compatibility; the slug sent upstream is randomised by design |
 | `LOG_FILE` | `logFile` | |
 | `CC_USE_PROVIDER_MODELS` | `useProviderModels` | set to `false` to use the built-in list |
 | `CC_STREAM_IDLE_MS` | streaming idle watchdog | default `30000`; raise it for slow reasoning models |
