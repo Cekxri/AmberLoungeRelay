@@ -17,3 +17,4 @@ echo.
 echo Log file: %~dp0..\logs\relay.log
 echo To close the bar, run scripts\stop.cmd
 ping -n 4 127.0.0.1 >nul
+exit /b 0

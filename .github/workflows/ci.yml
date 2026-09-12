@@ -28,3 +28,28 @@ jobs:
           sleep 2
           curl -fsS http://127.0.0.1:3050/health
           echo " ~ the bar is open UwU"
+
+  docker:
+    name: Docker build & health :3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t cidercc-uwu:ci .
+
+      - name: Run it and knock on the door
+        run: |
+          docker run -d --name cidercc-ci -p 3050:3050 cidercc-uwu:ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1; then
+              echo "health: $(curl -fsS http://127.0.0.1:3050/health) ~ the container bar is open UwU"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "container never answered /health"; docker logs cidercc-ci; exit 1
+
+      - name: Tidy up
+        if: always()
+        run: docker rm -f cidercc-ci || true
