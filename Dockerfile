@@ -1,7 +1,7 @@
-# Amber Lounge Relay ~ the cosy little container bar :3
+# Amber Lounge UwU ~ the cosy little container bar :3
 FROM node:22-alpine
 
-LABEL org.opencontainers.image.title="Amber Lounge Relay" \
+LABEL org.opencontainers.image.title="Amber Lounge UwU" \
       org.opencontainers.image.description="Command Code -> OpenAI / Anthropic relay" \
       org.opencontainers.image.licenses="MIT"
 

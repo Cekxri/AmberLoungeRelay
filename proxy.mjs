@@ -1,5 +1,5 @@
 /**
- * Amber Lounge Relay — a chill little proxy between Command Code and the world of OpenAI / Anthropic clients.
+ * Amber Lounge UwU — a chill little proxy between Command Code and the world of OpenAI / Anthropic clients.
  *
  * Pull up a stool: this single-file relay turns the Command Code API into OpenAI Chat Completions,
  * Anthropic Messages and OpenAI Responses endpoints. Zero external dependencies, one file, no nonsense. :3
@@ -3452,7 +3452,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 server.listen(CFG.port, CFG.host, () => {
-  log('info', 'Amber Lounge Relay is open ~ pull up a stool :3', {
+  log('info', 'Amber Lounge UwU is open ~ pull up a stool :3', {
     webTools: 'web_search/web_fetch internal execution on',
     aliasProbe: (process.env.CC_NAMESPACE_ALIAS_PROBE === '1') ? ('on: ' + (process.env.CC_ALIAS_PROBE_TOOL || 'list_threads')) : 'off',
     url: `http://${CFG.host}:${CFG.port}`,

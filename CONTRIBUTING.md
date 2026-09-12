@@ -12,8 +12,8 @@ Ta for wanting to help. A few house rules keep the bar tidy.
 ## Getting set up
 
 ```bash
-git clone https://github.com/Cekxri/AmberLoungeRelay.git
-cd AmberLoungeRelay
+git clone https://github.com/Cekxri/AmberLoungeUwU.git
+cd AmberLoungeUwU
 npm start          # no install step — there are no dependencies
 ```
 

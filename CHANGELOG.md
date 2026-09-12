@@ -4,7 +4,7 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ## [1.0.0] — 2026-09-12
 
-First public release of **Amber Lounge Relay**, a heavily patched fork of
+First public release of **Amber Lounge UwU**, a heavily patched fork of
 [MAXeaglet/commandcode-proxy](https://github.com/MAXeaglet/commandcode-proxy).
 
 ### Added

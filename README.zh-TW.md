@@ -1,9 +1,9 @@
-# Amber Lounge Relay :3
+# Amber Lounge UwU :3
 
 > 一座介於 **Command Code** 與 OpenAI／Anthropic 客戶端之間的小小 chill 轉接酒吧。
 > 拉張高腳椅坐下，挑你要的那一杯，讓模型慢慢流出來 ~ UwU
 
-Amber Lounge Relay 是一個單檔、零外部依賴的反向代理。它把 Command Code 的 API 端成
+Amber Lounge UwU 是一個單檔、零外部依賴的反向代理。它把 Command Code 的 API 端成
 **OpenAI Chat Completions**、**Anthropic Messages** 與 **OpenAI Responses** 三種端點，
 讓你的愛用客戶端能啜一口原本沒那麼好親近的訂閱服務。:3
 
@@ -31,8 +31,8 @@ Amber Lounge Relay 是一個單檔、零外部依賴的反向代理。它把 Com
 ## 快速開始
 
 ```bash
-git clone https://github.com/Cekxri/AmberLoungeRelay.git
-cd AmberLoungeRelay
+git clone https://github.com/Cekxri/AmberLoungeUwU.git
+cd AmberLoungeUwU
 npm start        # 專案附的 config.json 會聽 http://0.0.0.0:3050
 ```
 
@@ -175,7 +175,7 @@ Cursor（或任何 OpenAI 相容工具）填 `http://127.0.0.1:3050/v1` 加上�
 
 ```bash
 docker compose up -d                        # 或 PROXY_PORT=13050 docker compose up -d
-docker build -t AmberLoungeRelay:latest . # 想自己蓋也行
+docker build -t AmberLoungeUwU:latest . # 想自己蓋也行
 ```
 
 映像檔是輕量 `node:22-alpine`，聽 `3050`，內建 `/health` 健康檢查。
@@ -211,7 +211,7 @@ docker build -t AmberLoungeRelay:latest . # 想自己蓋也行
 
 - **原始專案：**[MAXeaglet/commandcode-proxy](https://github.com/MAXeaglet/commandcode-proxy)（MIT）——
   這支程式從那裡開始，本分支保留了同樣的授權與同樣的感謝。
-- **Amber Lounge Relay 的修補：**工具 namespace 橋接、內建網路工具、圖片型工具結果、思考等級收斂、
+- **Amber Lounge UwU 的修補：**工具 namespace 橋接、內建網路工具、圖片型工具結果、思考等級收斂、
   殘缺歷史修補，以及一堆小型穩定度修正。
 
 ## 授權
