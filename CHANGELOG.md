@@ -8,6 +8,11 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **A cut stream that produced nothing is no longer silent either.** The previous fix only spoke up when some text
+  had already been streamed; if the upstream closed the connection before any text *or* tool call came through, the
+  turn still ended with nothing on screen. The relay now counts the tool calls it emitted and answers that case with
+  an `error` event too ("closed the stream before producing anything"). A normal stream emits no error — verified
+  with a mock upstream in both directions.
 - **Cross-thread delegation reaches the other model now.** A message sent with `send_message_to_thread`
 - **A cut upstream stream is no longer reported as success.** The relay used to answer `response.completed`
   even when the upstream closed the stream without its terminal `finish` event, so a half-written answer

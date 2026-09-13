@@ -2838,6 +2838,9 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
   const doneItems = [];
   let usage = null;
   let textAcc = '';
+  // 繁中：這一輪送出了幾個工具呼叫（用來判斷「斷線時到底有沒有產出東西」）。
+  // English: how many tool calls this turn emitted, so a cut stream can be classified.
+  let toolCallCount = 0;
   let finishReason = null;
   // 繁中：上游正常結束一定會送 finish；沒收到就代表串流被切斷，不能假裝完成。
   // English: a well-formed upstream stream always ends with `finish`; without it the stream was cut.
@@ -2967,6 +2970,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
             internalCalls.push({ callId, name: event.toolName, args });
             break;
           }
+          toolCallCount++;
           out.push.apply(out, openItem('function_call', {
             type: 'function_call', id: newResponsesId('fc_'), call_id: callId,
             name: resolveToolCall(clientName(event.toolName || '')).name, arguments: '', status: 'in_progress',
@@ -3022,7 +3026,13 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
           usage: buildResponsesUsage(usage, this.outputTokens),
         }),
       }));
-      if (!sawFinish && textAcc.length > 0) {
+      if (!sawFinish && textAcc.length === 0 && toolCallCount === 0) {
+        // 繁中：上游什麼都沒產出就斷線（連工具呼叫都沒有）→ 使用者只會看到「想了一下就結束」，必須講出來。
+        // English: the upstream cut the stream before producing anything at all — say so instead of ending silently.
+        out.push(this.errorEvent('Upstream closed the stream before producing anything (no text, no tool call). Please send the message again.'));
+      } else if (!sawFinish && textAcc.length > 0) {
+        // 繁中：已經輸出過文字才被切斷 → 保留文字，但標明內容不完整。
+        // English: partial text was already streamed, so keep it and flag it as incomplete.
         out.push(this.errorEvent('Upstream stream ended early: the reply above is incomplete (the upstream closed the stream without a finish event). Send "continue" to carry on.'));
       }
       return out;
