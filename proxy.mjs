@@ -2918,6 +2918,12 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
     get started() { return createdSent; },
     get stopReason() { return finishReason; },
     get reasoningText() { return reasoningAcc; },
+    // 繁中：自動恢復要知道「上游有沒有正常收尾」「已經輸出多少文字」「送過幾個工具呼叫」。
+    // English: the recovery path needs to know whether the upstream finished, and what it produced so far.
+    get sawFinish() { return sawFinish; },
+    get text() { return textAcc; },
+    get toolCallsEmitted() { return toolCallCount; },
+    beginContinuation() { sawFinish = false; },
     consumeInternalCalls() { const list = internalCalls.slice(); internalCalls.length = 0; return list; },
     parseLine(line) {
       const trimmed = line.trim();
@@ -3175,6 +3181,9 @@ async function handleResponses(req, res) {
       translator = createResponsesSseTranslator(model, responseId, created, { internalToolNames, toolNameMap: baseChat.__toolNameMap, toolNamespaces: baseChat.__toolNamespaces });
       let buffer = '';
       let started = false;
+      // 繁中：一輪最多自動救 2 次，避免上游一直斷時無限迴圈。
+      // English: at most two automatic recoveries per turn, so a flapping upstream cannot loop for ever.
+      let recoveryAttempts = 0;
       const decoder = new TextDecoder();
       const idle = createIdleWatchdog(STREAM_IDLE_TIMEOUT_MS);
       const SSE_HEADERS = {
@@ -3263,6 +3272,29 @@ async function handleResponses(req, res) {
             }
             currentResponse = next;
             continue;
+          }
+
+          // 繁中：上游沒送 finish 就把串流關掉（使用者看到的「斷一半」）→ 自動重試或接續，最多兩次。
+          // English: the upstream closed the stream without its finish event — the "cut off" the user sees.
+          // Retry when nothing came through, or continue the partial answer, instead of passing the cut on.
+          if (!translator.sawFinish && recoveryAttempts < 2) {
+            recoveryAttempts++;
+            const partial = translator.text;
+            const nothingYet = partial.length === 0 && translator.toolCallsEmitted === 0;
+            log('warn', 'Upstream cut the stream — recovering', { attempt: recoveryAttempts, nothingYet, textChars: partial.length });
+            const contMessages = convoMessages.slice();
+            if (!nothingYet && partial) {
+              contMessages.push({ role: 'assistant', content: partial });
+              contMessages.push({ role: 'user', content: 'Continue exactly where you stopped. Do not repeat anything you already wrote; carry straight on from the last character.' });
+            }
+            const retryBody = buildCcRequest(Object.assign({}, baseChat, { messages: contMessages }));
+            const retry = await forwardToCC(retryBody, apiKey, req.headers, abortController.signal, promptCacheKey);
+            if (retry.ok) {
+              translator.beginContinuation();
+              currentResponse = retry;
+              continue;
+            }
+            log('warn', 'Stream recovery failed', { status: retry.status });
           }
 
           if (translator.outputTokens === 0 && !translator.started) {

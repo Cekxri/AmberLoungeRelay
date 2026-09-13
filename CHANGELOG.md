@@ -54,6 +54,12 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Added
 
+- **Automatic recovery from a cut upstream stream.** When the upstream closes the stream without its `finish`
+  event, the relay no longer hands the cut to the client: if nothing came through yet it retries the same request,
+  and if part of the answer was already streamed it re-asks the model to carry on from the last character and
+  stitches the two halves together. Two automatic attempts per turn, then the `error` event (from the previous
+  fix) is used as the last resort. Verified with a mock upstream: empty cut → silent retry, partial cut → seamless
+  continuation, permanent cut → error after two attempts.
 - **Documents what the relay does *not* own.** `docs/tool-namespaces.md` now explains that `tool_search` is a
   client-side tool, that the relay keeps no tool list of its own (so future app tool changes pass straight
   through), and the three cases that *do* require a relay change.
