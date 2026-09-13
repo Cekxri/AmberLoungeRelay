@@ -3318,11 +3318,15 @@ async function handleResponses(req, res) {
           // 繁中：上游沒送 finish 就把串流關掉（使用者看到的「斷一半」）→ 自動重試或接續，最多兩次。
           // English: the upstream closed the stream without its finish event — the "cut off" the user sees.
           // Retry when nothing came through, or continue the partial answer, instead of passing the cut on.
-          if (!translator.sawFinish && recoveryAttempts < 2) {
+          if (!translator.sawFinish && recoveryAttempts < 4) {
             recoveryAttempts++;
             const partial = translator.text;
             const nothingYet = partial.length === 0 && translator.toolCallsEmitted === 0;
-            log('warn', 'Upstream cut the stream — recovering', { attempt: recoveryAttempts, nothingYet, textChars: partial.length });
+            // 繁中：上游瞬間過載時立刻重試常常還是被切；先等一下再試，並記下請求大小方便比對。
+            // English: an immediately repeated call often gets cut again while the upstream is busy — wait a
+            // little, and record how big the request was so cut patterns can be compared later.
+            if (recoveryAttempts > 1) await new Promise((r) => setTimeout(r, 900 * (recoveryAttempts - 1)));
+            log('warn', 'Upstream cut the stream — recovering', { attempt: recoveryAttempts, nothingYet, textChars: partial.length, inputItems: Array.isArray(respReq.input) ? respReq.input.length : 0 });
             const contMessages = convoMessages.slice();
             if (!nothingYet && partial) {
               contMessages.push({ role: 'assistant', content: partial });
