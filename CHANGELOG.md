@@ -8,6 +8,11 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Fixed
 
+- **Streaming failures are reported as SSE, not as a JSON body.** When a streaming request ran into an upstream error
+  (a 403, a zero-output reply, an idle timeout, a dropped connection), the relay used to answer with plain JSON; the
+  client could only report the generic `stream disconnected before completion: stream closed before response.completed`
+  and the real cause stayed hidden. Those paths now send an SSE `error` event carrying the upstream's own message.
+  The upstream body is logged too, so `CC API error` finally shows *why* (for example the rate-limit text behind a 403).
 - **A cut stream that produced nothing is no longer silent either.** The previous fix only spoke up when some text
   had already been streamed; if the upstream closed the connection before any text *or* tool call came through, the
   turn still ended with nothing on screen. The relay now counts the tool calls it emitted and answers that case with
@@ -54,6 +59,10 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 
 ### Added
 
+- **Upstream connection failures are retried.** A `fetch failed` (DNS, TLS or a dropped socket) now gets up to three
+  attempts with a short backoff before the client ever hears about it, instead of surfacing as an error on the first
+  blip. Verified with a mock upstream that destroys the first connection: the retry answers normally and the client
+  sees no error.
 - **Automatic recovery from a cut upstream stream.** When the upstream closes the stream without its `finish`
   event, the relay no longer hands the cut to the client: if nothing came through yet it retries the same request,
   and if part of the answer was already streamed it re-asks the model to carry on from the last character and

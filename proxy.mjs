@@ -984,6 +984,24 @@ function getApiKey(headers) {
 
 // ── Streaming relay / 串流轉發 ──────────────────────
 
+// 繁中：上游連不上（fetch failed＝DNS/TLS/連線中斷）時重試幾次，網路瞬斷就不用使用者重送。
+// English: retry the upstream call when the connection itself fails (DNS/TLS/socket), so a transient
+// network hiccup does not turn into a visible error for the client.
+async function forwardToCCWithRetry(body, apiKey, incomingHeaders, signal, promptCacheKey, attempts = 3) {
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await forwardToCC(body, apiKey, incomingHeaders, signal, promptCacheKey);
+    } catch (e) {
+      lastErr = e;
+      if (signal && signal.aborted) throw e;
+      log('warn', 'Upstream fetch failed — retrying', { attempt: i, of: attempts, error: String((e && e.message) || e) });
+      if (i < attempts) await new Promise((r) => setTimeout(r, 700 * i));
+    }
+  }
+  throw lastErr;
+}
+
 async function forwardToCC(body, apiKey, incomingHeaders = {}, signal, promptCacheKey) {
   const url = `${CFG.apiBase}/alpha/generate`;
   const traceparent = generateTraceparent();
@@ -1057,11 +1075,11 @@ async function handleChatCompletions(req, res) {
     // First-time initialisation (fingerprint + lifecycle)
     await ensureInitialized(apiKey, abortController.signal);
     // Forward to the CC API (client headers are passed in so the session ID can be extracted)
-    const ccResponse = await forwardToCC(ccBody, apiKey, req.headers, abortController.signal, openaiReq.prompt_cache_key);
+    const ccResponse = await forwardToCCWithRetry(ccBody, apiKey, req.headers, abortController.signal, openaiReq.prompt_cache_key);
 
     if (!ccResponse.ok) {
       const errorText = await ccResponse.text().catch(() => '');
-      log('error', 'CC API error', { status: ccResponse.status });
+      log('error', 'CC API error', { status: ccResponse.status, body: String(errorText).slice(0, 200) });
       const mapped = mapCcError(ccResponse.status, errorText);
       sendJSON(res, mapped.status, mapped.body);
       return;
@@ -1883,7 +1901,7 @@ async function handleMessages(req, res) {
   try {
     // First-time initialisation (fingerprint + lifecycle)
     await ensureInitialized(apiKey, abortController.signal);
-    const ccResponse = await forwardToCC(ccBody, apiKey, req.headers, abortController.signal);
+    const ccResponse = await forwardToCCWithRetry(ccBody, apiKey, req.headers, abortController.signal);
 
     if (!ccResponse.ok) {
       const errorText = await ccResponse.text().catch(() => '');
@@ -2802,6 +2820,26 @@ function buildResponsesObject(responseId, model, created, fullText, thinkingText
   };
 }
 
+// 繁中：串流請求失敗時要用 SSE 的 error 事件回報；回 JSON 只會讓客戶端顯示「stream closed before
+// response.completed」，真正的錯誤（例如 403 的訊息）就被藏起來了。
+// English: a streaming request must hear about a failure as an SSE error event — a JSON body makes the client
+// report the generic "stream closed before response.completed" and hides the real cause.
+function sendResponsesStreamError(res, status, type, message) {
+  if (res.headersSent) return false;
+  try {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const payload = { type: 'error', code: String(type || 'proxy_error'), message: String(message || 'Upstream error'), param: null, upstream_status: status || null };
+    res.write('event: error\ndata: ' + JSON.stringify(payload) + '\n\n');
+    res.end();
+    return true;
+  } catch (e) { return false; }
+}
+
 function sendResponsesError(res, status, type, message, retryAfter) {
   const body = { error: { message, type, code: null, param: null } };
   if (retryAfter !== undefined) body.retry_after = retryAfter;
@@ -3152,7 +3190,7 @@ async function handleResponses(req, res) {
   try {
     await ensureInitialized(apiKey, abortController.signal);
     debugToolsLog({ event: 'responses_in', model: respReq.model, stream: respReq.stream === true, rawTools: (Array.isArray(respReq.tools) ? respReq.tools : []).map(t => ({ type: (t && t.type) || null, name: (t && (t.name || (t.function && t.function.name))) || null, hasParams: !!(t && (t.parameters || t.input_schema)) })), inputItems: (Array.isArray(respReq.input) ? respReq.input : []).map(it => (it && it.type) || typeof it) });
-    let ccResponse = await forwardToCC(ccBody, apiKey, req.headers, abortController.signal, promptCacheKey);
+    let ccResponse = await forwardToCCWithRetry(ccBody, apiKey, req.headers, abortController.signal, promptCacheKey);
 
     if (!ccResponse.ok) {
       let errorText = await ccResponse.text().catch(() => '');
@@ -3161,14 +3199,17 @@ async function handleResponses(req, res) {
         const budget = Math.max(1024, ctxLimit.limit - ctxLimit.messagesTokens - 1024);
         const safeCompletion = Math.max(1024, Math.min(ccBody.params.max_tokens || 64000, budget));
         log('warn', 'Context limit hit, retrying with reduced max_tokens', { messagesTokens: ctxLimit.messagesTokens, limit: ctxLimit.limit, newMaxTokens: safeCompletion });
-        ccResponse = await forwardToCC({ ...ccBody, params: { ...ccBody.params, max_tokens: safeCompletion } }, apiKey, req.headers, abortController.signal, promptCacheKey);
+        ccResponse = await forwardToCCWithRetry({ ...ccBody, params: { ...ccBody.params, max_tokens: safeCompletion } }, apiKey, req.headers, abortController.signal, promptCacheKey);
         if (!ccResponse.ok) errorText = await ccResponse.text().catch(() => '');
       } else if (ctxLimit) {
         log('warn', 'Context limit exceeded by messages alone (cannot retry)', { messagesTokens: ctxLimit.messagesTokens, limit: ctxLimit.limit });
       }
       if (!ccResponse.ok) {
-        log('error', 'CC API error', { status: ccResponse.status, path: '/v1/responses' });
+        log('error', 'CC API error', { status: ccResponse.status, path: '/v1/responses', body: String(errorText).slice(0, 200) });
         const mapped = mapCcError(ccResponse.status, errorText);
+        // 繁中：串流請求要用 SSE 回報，不然客戶端只會看到「stream closed before response.completed」。
+        // English: a streaming client must hear this as SSE, not as a JSON body.
+        if (stream && sendResponsesStreamError(res, mapped.status, mapped.body.error.type, mapped.body.error.message)) return;
         sendResponsesError(res, mapped.status, mapped.body.error.type, mapped.body.error.message, mapped.body.retry_after);
         return;
       }
@@ -3258,7 +3299,7 @@ async function handleResponses(req, res) {
             convoMessages.push(assistantMsg);
             for (const r of results) convoMessages.push({ role: 'tool', tool_call_id: r.call.callId, name: r.call.name, content: r.text });
             const nextBody = buildCcRequest(Object.assign({}, baseChat, { messages: convoMessages }));
-            const next = await forwardToCC(nextBody, apiKey, req.headers, abortController.signal, promptCacheKey);
+            const next = await forwardToCCWithRetry(nextBody, apiKey, req.headers, abortController.signal, promptCacheKey);
             if (!next.ok) {
               const errText = await next.text().catch(() => '');
               const mapped = mapCcError(next.status, errText);
@@ -3288,7 +3329,7 @@ async function handleResponses(req, res) {
               contMessages.push({ role: 'user', content: 'Continue exactly where you stopped. Do not repeat anything you already wrote; carry straight on from the last character.' });
             }
             const retryBody = buildCcRequest(Object.assign({}, baseChat, { messages: contMessages }));
-            const retry = await forwardToCC(retryBody, apiKey, req.headers, abortController.signal, promptCacheKey);
+            const retry = await forwardToCCWithRetry(retryBody, apiKey, req.headers, abortController.signal, promptCacheKey);
             if (retry.ok) {
               translator.beginContinuation();
               currentResponse = retry;
@@ -3299,6 +3340,7 @@ async function handleResponses(req, res) {
 
           if (translator.outputTokens === 0 && !translator.started) {
             try { if (!abortController.signal.aborted) abortController.abort(); } catch (e2) {}
+            if (stream && sendResponsesStreamError(res, 429, 'rate_limit_error', 'Empty response from upstream (zero output tokens)')) return;
             sendResponsesError(res, 429, 'rate_limit_error',
               'Empty response from upstream (zero output tokens)', 10);
             return;
@@ -3320,7 +3362,11 @@ async function handleResponses(req, res) {
           const timeoutMsg = consecutiveTimeouts >= TIMEOUT_REDUCE_CONTEXT_THRESHOLD
             ? 'Response timeout - try reducing context length (summarize earlier messages)'
             : 'Response timeout - request timed out';
-          if (!started) { sendResponsesError(res, 429, 'rate_limit_error', timeoutMsg, 5); return; }
+          if (!started) {
+            // 繁中：串流請求要用 SSE 回報（重試中的客戶端才看得懂）。
+            // English: streaming clients need the failure as SSE.
+            if (stream && sendResponsesStreamError(res, 429, 'rate_limit_error', timeoutMsg)) return;
+            sendResponsesError(res, 429, 'rate_limit_error', timeoutMsg, 5); return; }
           if (!res.writableEnded) {
             try { res.write(translator.errorEvent(timeoutMsg)); } catch (e2) {}
             try { res.destroy(); } catch (e2) {}
@@ -3329,7 +3375,9 @@ async function handleResponses(req, res) {
           log('error', 'Stream error', { message: e.message, path: '/v1/responses' });
           try { abortController.abort(); } catch (e2) {}
           if (!started) {
-            sendResponsesError(res, 502, 'proxy_error', 'Upstream error: ' + e.message, 10);
+            if (stream && sendResponsesStreamError(res, 502, 'proxy_error', 'Upstream error: ' + e.message)) return;
+            if (stream && sendResponsesStreamError(res, 502, 'proxy_error', 'Upstream error: ' + e.message)) return;
+          sendResponsesError(res, 502, 'proxy_error', 'Upstream error: ' + e.message, 10);
             return;
           }
           if (!res.writableEnded) {
@@ -3440,7 +3488,7 @@ async function handleResponses(req, res) {
           convoMessages.push(assistantMsg);
           for (const r of results) convoMessages.push({ role: 'tool', tool_call_id: r.call.id, name: r.call.function.name, content: r.text });
           const nextBody = buildCcRequest(Object.assign({}, baseChat, { messages: convoMessages }));
-          const next = await forwardToCC(nextBody, apiKey, req.headers, abortController.signal, promptCacheKey);
+          const next = await forwardToCCWithRetry(nextBody, apiKey, req.headers, abortController.signal, promptCacheKey);
           if (!next.ok) {
             const errText = await next.text().catch(() => '');
             const mapped = mapCcError(next.status, errText);
