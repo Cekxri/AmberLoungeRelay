@@ -73,6 +73,16 @@
   用假上游驗證（第一次切斷、重試回 429）：事件順序為 `error` → `response.incomplete`；正常串流仍是
   `response.completed` 且沒有錯誤事件。
 
+### 新增
+
+- **`CC_NATIVE_DELEGATION` —— 選擇進來的跨對話委派要用哪種形狀送給模型。** Codex App 把
+  `send_message_to_thread` 的內容注入成單獨一筆 `function_call_output`，**沒有 `call_id`、也沒有配對的
+  `function_call`**（`openai/codex#45227`，另有 #41690／#43515／#41799），所以這種資料不可能原樣轉送。預設維持
+  現行行為（轉成使用者訊息，這也是 OpenAI issue 裡建議的修法之一）；設成 `1` 則改為補一組配對的 `function_call`
+  ＋ `function_call_output`，讓上游看到原生 tool call/result 語意。兩種形狀都用嚴格 mock 上游驗證過：預設送出
+  `user / assistant / user`，原生模式送出 `user / assistant / assistant(tool-call) / tool(tool-result)`，呼叫與結果
+  正確配對。
+
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是

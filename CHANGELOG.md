@@ -92,6 +92,17 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
   retry — event order is `error` then `response.incomplete` — while a healthy stream still ends with `response.completed`
   and no error at all.
 
+### Added
+
+- **`CC_NATIVE_DELEGATION` — choose how an incoming cross-thread delegation reaches the model.** The Codex App
+  injects `send_message_to_thread` payloads as a standalone `function_call_output` with no `call_id` and no pairing
+  `function_call` (`openai/codex#45227`, plus #41690 / #43515 / #41799), so the item cannot be forwarded as-is. The
+  default keeps the relay’s existing behaviour (a user message, which is the shape OpenAI’s issue also proposes);
+  setting the switch to `1` synthesises a matching `function_call` + `function_call_output` pair instead, so the
+  upstream sees native tool call/result semantics. Both shapes were verified against a strict mock upstream: default
+  produces `user / assistant / user`, native produces `user / assistant / assistant(tool-call) / tool(tool-result)`
+  with the calls and results correctly paired.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

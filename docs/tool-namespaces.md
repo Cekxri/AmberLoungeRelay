@@ -68,6 +68,30 @@ using the same session and fingerprint headers as generation requests, then feed
 as a tool message. The client never sees these internal calls; `CC_MAX_WEB_ROUNDS` (default 3) caps how
 many search rounds one request may run.
 
+## Cross-thread delegation, and the two shapes it can take
+
+When one task sends a message to another (`send_message_to_thread`), the Codex App injects it into the target
+thread as a **standalone `function_call_output`** carrying `<codex_delegation>…</codex_delegation>`, with a
+`name` and `namespace` but **no `call_id`** and no matching `function_call`. That is an App-side defect, not
+something this relay creates: it is tracked as [openai/codex#45227](https://github.com/openai/codex/issues/45227)
+(with #41690, #43515 and #41799 for other providers), and a strict Responses provider answers
+`input: missing field call_id`, which then poisons that thread for every later turn.
+
+Because the item is malformed, no relay can forward it byte-for-byte — it has to choose a shape. There are two,
+and `CC_NATIVE_DELEGATION` picks between them:
+
+| Mode | What the model receives | When to pick it |
+|---|---|---|
+| `CC_NATIVE_DELEGATION=0` (default) | a `user` message prefixed `[Message from another task — treat this as a user instruction]` | delegation reads as an instruction, which is how the agent in the target thread should treat it; this is also one of the fixes proposed in the OpenAI issue |
+| `CC_NATIVE_DELEGATION=1` | a synthesised `function_call` plus its `function_call_output`, sharing one generated `call_id` | the model sees native tool call/result semantics and strict upstreams accept the payload |
+
+The App’s on-screen card ("sent from another task") is produced from its own rollout and is unaffected by either
+mode — the choice only changes what the upstream model sees.
+
+To check which shape is in play, watch the log for the delegation turning into either a user message or a
+`tool-call`/`tool-result` pair, and remember that the wire format this relay sends upstream is Command Code’s own
+schema (`tool-call` / `tool-result` content parts), not OpenAI’s `tool_calls` arrays.
+
 ## Debugging checklist
 
 | Check | Where to look |

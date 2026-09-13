@@ -2489,6 +2489,25 @@ function repairToolCallPairs(messages) {
 // English: a cross-thread delegation arrives as a function_call_output with no matching call. Treating it as a
 // tool result means the orphan repair drops it and the target model never sees it; converting it to a user
 // message is what makes multi-agent delegation actually work.
+// 繁中：跨對話委派有兩種送法（CC_NATIVE_DELEGATION 切換）：
+//   0（預設）＝轉成使用者訊息，內容一定送達，OpenAI issue #45227 也建議這種做法。
+//   1＝在上游請求裡補一組配對的 function_call + function_call_output（原生 tool call/result 語意，
+//      對嚴格的上游也能通過），模型看到的形狀就跟 Codex App 自己的設計一致。
+// English: two shapes for an incoming cross-thread delegation (toggled by CC_NATIVE_DELEGATION):
+//   0 (default) = a user message, which OpenAI's issue #45227 lists as one of the intended fixes.
+//   1 = synthesise a matching function_call + function_call_output pair, so the model sees native
+//       tool call/result semantics instead of a synthetic user turn.
+const NATIVE_DELEGATION = process.env.CC_NATIVE_DELEGATION === '1';
+
+function delegationToToolPair(raw, name) {
+  const callId = 'call_deleg_' + randomUUID().replace(/-/g, '').slice(0, 16);
+  const toolName = name || 'send_message_to_thread';
+  return [
+    { role: 'assistant', content: null, tool_calls: [{ id: callId, type: 'function', function: { name: toolName, arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: callId, name: toolName, content: String(raw || '') },
+  ];
+}
+
 function delegationToUserMessage(raw) {
   const m = /<input>([\s\S]*?)<\/input>/.exec(String(raw || ''));
   const body = (m ? m[1] : String(raw || '')).trim();
@@ -2625,7 +2644,13 @@ function convertResponsesToChat(respReq) {
             // 繁中：沒有 call_id 的委派訊息 → 使用者訊息（否則會被孤兒修補丟掉）。
             // English: a delegation with no call_id becomes a user message, not a droppable tool result.
             if (!item.call_id && (item.name === 'send_message_to_thread' || /<codex_delegation>/.test(text))) {
-              messages.push({ role: 'user', content: delegationToUserMessage(text) });
+              // 繁中：原生模式＝補一組配對的 tool call/result；否則維持使用者訊息。
+              // English: native mode synthesises the matching tool call/result pair; otherwise a user message.
+              if (NATIVE_DELEGATION) {
+                for (const m of delegationToToolPair(text, item.name)) messages.push(m);
+              } else {
+                messages.push({ role: 'user', content: delegationToUserMessage(text) });
+              }
               break;
             }
             messages.push({

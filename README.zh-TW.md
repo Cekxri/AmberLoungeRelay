@@ -93,6 +93,7 @@ curl http://127.0.0.1:3050/v1/chat/completions \
 | `CC_EMPTY_SYSTEM_PLACEHOLDER` | 空 system prompt 的空格佔位 | 預設開；設 `false` 關閉 |
 | `CC_CLIENT_DRAIN_TIMEOUT_MS` | 僵死客戶端保護 | 預設未設；例如 `60000` 會丟掉停止讀取的卡住客戶端 |
 | `CC_DEBUG_TOOLS` | 工具清單除錯日誌 | 設 `1` 會把收到的工具清單寫進 `tools-debug.log` |
+| `CC_NATIVE_DELEGATION` | 進來的跨對話委派要用哪種形狀 | 預設 `0`：轉成使用者訊息。設 `1` 會改補一組配對的 `function_call` + `function_call_output`，讓模型看到原生 tool call/result 語意（詳見 [docs/tool-namespaces.md](docs/tool-namespaces.md)） |
 
 ## 端點
 
