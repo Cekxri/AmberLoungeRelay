@@ -98,7 +98,7 @@ Environment variables override the file, which is handy for Docker and for that 
 | `CC_EMPTY_SYSTEM_PLACEHOLDER` | space placeholder for empty system prompts | on by default; set to `false` to disable |
 | `CC_CLIENT_DRAIN_TIMEOUT_MS` | stalled-client guard | unset by default; for example `60000` drops a client that stops draining |
 | `CC_DEBUG_TOOLS` | tool-list debug log | set to `1` to write the received tool list to `tools-debug.log` |
-| `CC_NATIVE_DELEGATION` | how an incoming cross-thread delegation is shaped | default `0`: it arrives as a user message. Set to `1` to synthesise a matching `function_call` + `function_call_output` pair instead, so the model sees native tool call/result semantics (see [docs/tool-namespaces.md](docs/tool-namespaces.md)) |
+| `CC_NATIVE_DELEGATION` | how an incoming cross-thread delegation is shaped | **on by default**: a matching `function_call` + `function_call_output` pair is synthesised, so the model sees native tool call/result semantics. Set to `0` for the user-message fallback (see [docs/tool-namespaces.md](docs/tool-namespaces.md)) |
 
 ## Endpoints
 

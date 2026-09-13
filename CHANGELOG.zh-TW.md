@@ -83,6 +83,12 @@
   `user / assistant / user`，原生模式送出 `user / assistant / assistant(tool-call) / tool(tool-result)`，呼叫與結果
   正確配對。
 
+### 變更
+
+- **跨對話委派現在預設就是原生。** `CC_NATIVE_DELEGATION` 不用再手動打開：進來的委派會以它本來該有的樣子
+  （配對的 `function_call` + `function_call_output`）轉送，模型看到的是原生 tool call/result 語意，也符合嚴格上游的要求。
+  設 `CC_NATIVE_DELEGATION=0` 可退回先前的使用者訊息模式（讀起來就是一則指示）。
+
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是

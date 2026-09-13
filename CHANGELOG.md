@@ -103,6 +103,13 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
   produces `user / assistant / user`, native produces `user / assistant / assistant(tool-call) / tool(tool-result)`
   with the calls and results correctly paired.
 
+### Changed
+
+- **Native cross-thread delegation is now the default.** `CC_NATIVE_DELEGATION` no longer needs switching on: an
+  incoming delegation is forwarded as the paired `function_call` + `function_call_output` it was meant to be, so the
+  model sees native tool call/result semantics and the payload matches strict upstreams. Set `CC_NATIVE_DELEGATION=0`
+  to fall back to the previous user-message form, which reads as a plain instruction.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

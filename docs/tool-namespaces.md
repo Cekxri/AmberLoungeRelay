@@ -77,13 +77,13 @@ something this relay creates: it is tracked as [openai/codex#45227](https://gith
 (with #41690, #43515 and #41799 for other providers), and a strict Responses provider answers
 `input: missing field call_id`, which then poisons that thread for every later turn.
 
-Because the item is malformed, no relay can forward it byte-for-byte — it has to choose a shape. There are two,
+Because the item is malformed, no relay can forward it byte-for-byte — it has to choose a shape. There are two (native is the default, matching the App’s own data shape),
 and `CC_NATIVE_DELEGATION` picks between them:
 
 | Mode | What the model receives | When to pick it |
 |---|---|---|
-| `CC_NATIVE_DELEGATION=0` (default) | a `user` message prefixed `[Message from another task — treat this as a user instruction]` | delegation reads as an instruction, which is how the agent in the target thread should treat it; this is also one of the fixes proposed in the OpenAI issue |
-| `CC_NATIVE_DELEGATION=1` | a synthesised `function_call` plus its `function_call_output`, sharing one generated `call_id` | the model sees native tool call/result semantics and strict upstreams accept the payload |
+| `CC_NATIVE_DELEGATION=1` (default) | a synthesised `function_call` plus its `function_call_output`, sharing one generated `call_id` | the model sees native tool call/result semantics, matching the shape the App itself stores, and strict upstreams accept the payload |
+| `CC_NATIVE_DELEGATION=0` | a `user` message prefixed `[Message from another task — treat this as a user instruction]` | the fallback: the delegation reads plainly as an instruction; this is the other fix the OpenAI issue proposes |
 
 The App’s on-screen card ("sent from another task") is produced from its own rollout and is unaffected by either
 mode — the choice only changes what the upstream model sees.

@@ -2490,14 +2490,16 @@ function repairToolCallPairs(messages) {
 // tool result means the orphan repair drops it and the target model never sees it; converting it to a user
 // message is what makes multi-agent delegation actually work.
 // 繁中：跨對話委派有兩種送法（CC_NATIVE_DELEGATION 切換）：
-//   0（預設）＝轉成使用者訊息，內容一定送達，OpenAI issue #45227 也建議這種做法。
-//   1＝在上游請求裡補一組配對的 function_call + function_call_output（原生 tool call/result 語意，
+//   0＝轉成使用者訊息（退路；OpenAI issue #45227 也建議這種做法，內容一定送達）。
+//   1（預設）＝在上游請求裡補一組配對的 function_call + function_call_output（原生 tool call/result 語意，
 //      對嚴格的上游也能通過），模型看到的形狀就跟 Codex App 自己的設計一致。
-// English: two shapes for an incoming cross-thread delegation (toggled by CC_NATIVE_DELEGATION):
-//   0 (default) = a user message, which OpenAI's issue #45227 lists as one of the intended fixes.
-//   1 = synthesise a matching function_call + function_call_output pair, so the model sees native
+// English: two shapes for an incoming cross-thread delegation (CC_NATIVE_DELEGATION, default native):
+//   0 = a user message (the fallback; OpenAI's issue #45227 lists this as one of the intended fixes).
+//   1 (default) = synthesise a matching function_call + function_call_output pair, so the model sees native
 //       tool call/result semantics instead of a synthetic user turn.
-const NATIVE_DELEGATION = process.env.CC_NATIVE_DELEGATION === '1';
+// 繁中：預設原生（配合 App 自己的資料形狀）；設 CC_NATIVE_DELEGATION=0 可退回使用者訊息模式。
+// English: native is the default now; set CC_NATIVE_DELEGATION=0 for the user-message fallback.
+const NATIVE_DELEGATION = process.env.CC_NATIVE_DELEGATION !== '0';
 
 function delegationToToolPair(raw, name) {
   const callId = 'call_deleg_' + randomUUID().replace(/-/g, '').slice(0, 16);
