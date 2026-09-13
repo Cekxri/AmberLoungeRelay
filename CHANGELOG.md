@@ -110,6 +110,12 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
   model sees native tool call/result semantics and the payload matches strict upstreams. Set `CC_NATIVE_DELEGATION=0`
   to fall back to the previous user-message form, which reads as a plain instruction.
 
+### Fixed
+
+- **Every injected delegation is recognised, not just one flavour.** The orphan-output detection only matched
+  `send_message_to_thread` or a `<codex_delegation>` marker, so an injected `create_thread` / `handoff_thread` result
+  without that marker was still dropped by the orphan repair. All three tool names are matched now.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

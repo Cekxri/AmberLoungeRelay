@@ -2645,7 +2645,12 @@ function convertResponsesToChat(respReq) {
             const { text, images } = extractToolOutput(item);
             // 繁中：沒有 call_id 的委派訊息 → 使用者訊息（否則會被孤兒修補丟掉）。
             // English: a delegation with no call_id becomes a user message, not a droppable tool result.
-            if (!item.call_id && (item.name === 'send_message_to_thread' || /<codex_delegation>/.test(text))) {
+            // 繁中：App 注入的委派可能來自 send_message_to_thread／create_thread／handoff_thread，
+            // 有些還不帶 <codex_delegation> 標記；三種名字都要認，否則會被孤兒修補丟掉。
+            // English: injected delegations can come from send_message_to_thread, create_thread or
+            // handoff_thread, sometimes without the <codex_delegation> marker — recognise all three.
+            const isDelegation = item.name === 'send_message_to_thread' || item.name === 'create_thread' || item.name === 'handoff_thread' || /<codex_delegation>/.test(text);
+            if (!item.call_id && isDelegation) {
               // 繁中：原生模式＝補一組配對的 tool call/result；否則維持使用者訊息。
               // English: native mode synthesises the matching tool call/result pair; otherwise a user message.
               if (NATIVE_DELEGATION) {

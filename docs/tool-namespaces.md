@@ -72,7 +72,8 @@ many search rounds one request may run.
 
 When one task sends a message to another (`send_message_to_thread`), the Codex App injects it into the target
 thread as a **standalone `function_call_output`** carrying `<codex_delegation>…</codex_delegation>`, with a
-`name` and `namespace` but **no `call_id`** and no matching `function_call`. That is an App-side defect, not
+`name` and `namespace` but **no `call_id`** and no matching `function_call`. The injected item can arrive for `send_message_to_thread`,
+`create_thread` or `handoff_thread`, with or without the `<codex_delegation>` wrapper, and all of those shapes are recognised). That is an App-side defect, not
 something this relay creates: it is tracked as [openai/codex#45227](https://github.com/openai/codex/issues/45227)
 (with #41690, #43515 and #41799 for other providers), and a strict Responses provider answers
 `input: missing field call_id`, which then poisons that thread for every later turn.

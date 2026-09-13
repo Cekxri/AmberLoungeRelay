@@ -89,6 +89,11 @@
   （配對的 `function_call` + `function_call_output`）轉送，模型看到的是原生 tool call/result 語意，也符合嚴格上游的要求。
   設 `CC_NATIVE_DELEGATION=0` 可退回先前的使用者訊息模式（讀起來就是一則指示）。
 
+### 修正
+
+- **每一種被注入的委派都認得出來。** 原本只認 `send_message_to_thread` 或含 `<codex_delegation>` 標記的內容，
+  所以被注入、又不帶標記的 `create_thread`／`handoff_thread` 結果仍會被孤兒修補丟掉；現在三種工具名都認。
+
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是
