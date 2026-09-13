@@ -64,6 +64,15 @@
   （0.9 秒、1.8 秒、2.7 秒）。日誌也會記下請求帶了幾個輸入項目，方便之後比對「多大的請求容易被切」。
   用「連續切 3 次」的假上游驗證：第 4 次成功回覆，客戶端零錯誤。
 
+### 修正
+
+- **失敗的那一輪，現在會在結束前說出原因。** 錯誤事件原本排在 `response.completed` **之後**，而客戶端讀到 completed
+  就已經停止讀取，所以被切斷的回合看起來仍是「默默停住」。現在錯誤會**先**送出，該輪改用 `response.incomplete`
+  （`upstream_closed`）收尾；若自動救援失敗，會把上游自己的訊息原樣帶出來——額度用完時會直接顯示
+  `You've reached your weekly usage limit for your plan. Your limit resets at …`，而不是一句籠統的話。
+  用假上游驗證（第一次切斷、重試回 429）：事件順序為 `error` → `response.incomplete`；正常串流仍是
+  `response.completed` 且沒有錯誤事件。
+
 ## [1.0.0] — 2026-09-12
 
 **Cider CC UwU** 的第一個公開版本，是

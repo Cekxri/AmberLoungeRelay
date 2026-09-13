@@ -82,6 +82,16 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
   records how many input items the request carried, so cut patterns can be compared later. Verified with a mock upstream
   that cuts three times in a row: the fourth attempt answers and the client sees no error.
 
+### Fixed
+
+- **A failed turn now says why, before it ends.** The error event used to be appended *after* `response.completed`,
+  which the client has already stopped reading — so a cut turn still looked like a silent stop. The error now comes
+  first, the turn ends as `response.incomplete` (`upstream_closed`), and when an automatic recovery fails the upstream's
+  own message is passed through: a spent plan now shows `You've reached your weekly usage limit for your plan. Your limit
+  resets at …` instead of a generic line. Verified with a mock upstream that cuts the first call and answers 429 on the
+  retry — event order is `error` then `response.incomplete` — while a healthy stream still ends with `response.completed`
+  and no error at all.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of

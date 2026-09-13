@@ -2880,6 +2880,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
   // English: how many tool calls this turn emitted, so a cut stream can be classified.
   let toolCallCount = 0;
   let finishReason = null;
+  let cutReason = '';
   // 繁中：上游正常結束一定會送 finish；沒收到就代表串流被切斷，不能假裝完成。
   // English: a well-formed upstream stream always ends with `finish`; without it the stream was cut.
   let sawFinish = false;
@@ -2962,6 +2963,7 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
     get text() { return textAcc; },
     get toolCallsEmitted() { return toolCallCount; },
     beginContinuation() { sawFinish = false; },
+    setCutReason(message) { cutReason = String(message || ''); },
     consumeInternalCalls() { const list = internalCalls.slice(); internalCalls.length = 0; return list; },
     parseLine(line) {
       const trimmed = line.trim();
@@ -3053,6 +3055,10 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
       const out = closeItem();
       // finishReason=length means max_output_tokens truncated the answer: the spec requires status=incomplete
       const truncated = finishReason === 'length';
+      // 繁中：沒收到 finish = 上游把串流切斷；這一輪要標成 incomplete 並把錯誤「先」送出去。
+      // English: no finish event means the upstream cut the stream; mark the turn incomplete and
+      // send the error BEFORE the terminal event, otherwise the client never sees it.
+      const cut = !sawFinish;
       // 繁中：把「這一輪到底怎麼結束的」寫進日誌；上游沒送 finish 就斷線時，額外告訴使用者答案被切斷了，
       // 不然畫面上只會看到輸出到一半、卻沒有任何錯誤（使用者回報過的情況）。
       // English: log how the turn actually ended, and surface a cut stream instead of pretending success.
@@ -3063,22 +3069,20 @@ function createResponsesSseTranslator(model, responseId, created, opts) {
       } else {
         log('info', 'Upstream stream finished', { finishReason: finishReason || '(none)', outputTokens: this.outputTokens || 0, textChars: textAcc.length });
       }
-      out.push(sse(truncated ? 'response.incomplete' : 'response.completed', {
-        response: Object.assign(baseResponse(truncated ? 'incomplete' : 'completed', doneItems.slice()), {
+      if (cut) {
+        // 繁中：錯誤事件一定要在結尾事件之前；排在 completed 之後客戶端已停止讀取，使用者只會看到默默停住。
+        // English: the error must precede the terminal event — after response.completed the client has stopped reading.
+        out.push(this.errorEvent(cutReason || (textAcc.length === 0 && toolCallCount === 0
+          ? 'Upstream closed the stream before producing anything (no text, no tool call). Please send the message again.'
+          : 'Upstream stream ended early: the reply above is incomplete. Send "continue" to carry on.')));
+      }
+      out.push(sse(cut || truncated ? 'response.incomplete' : 'response.completed', {
+        response: Object.assign(baseResponse(cut || truncated ? 'incomplete' : 'completed', doneItems.slice()), {
           output_text: textAcc,
-          incomplete_details: truncated ? { reason: 'max_output_tokens' } : null,
+          incomplete_details: truncated ? { reason: 'max_output_tokens' } : (cut ? { reason: 'upstream_closed' } : null),
           usage: buildResponsesUsage(usage, this.outputTokens),
         }),
       }));
-      if (!sawFinish && textAcc.length === 0 && toolCallCount === 0) {
-        // 繁中：上游什麼都沒產出就斷線（連工具呼叫都沒有）→ 使用者只會看到「想了一下就結束」，必須講出來。
-        // English: the upstream cut the stream before producing anything at all — say so instead of ending silently.
-        out.push(this.errorEvent('Upstream closed the stream before producing anything (no text, no tool call). Please send the message again.'));
-      } else if (!sawFinish && textAcc.length > 0) {
-        // 繁中：已經輸出過文字才被切斷 → 保留文字，但標明內容不完整。
-        // English: partial text was already streamed, so keep it and flag it as incomplete.
-        out.push(this.errorEvent('Upstream stream ended early: the reply above is incomplete (the upstream closed the stream without a finish event). Send "continue" to carry on.'));
-      }
       return out;
     },
     fail(message) {
@@ -3338,6 +3342,14 @@ async function handleResponses(req, res) {
               translator.beginContinuation();
               currentResponse = retry;
               continue;
+            }
+            {
+              const errText = await retry.text().catch(() => '');
+              const mapped = mapCcError(retry.status, errText);
+              // 繁中：把上游真正的原因（例如 429 週額度）帶到 finish()，使用者才看得到為什麼被斷。
+              // English: carry the upstream's own reason (e.g. a 429 weekly limit) into finish() so the
+              // client sees why the turn ended instead of a generic message.
+              translator.setCutReason(mapped.body.error.message || ('Upstream error ' + retry.status));
             }
             log('warn', 'Stream recovery failed', { status: retry.status });
           }
