@@ -75,6 +75,13 @@ All the pours, in order. This project follows [Semantic Versioning](https://semv
 - **Docker build in CI.** The workflow builds the image and polls `/health` inside the container, so the
   Dockerfile cannot rot unnoticed.
 
+### Changed
+
+- **Cut-stream recovery tries harder.** The upstream sometimes drops a request several times before it answers, so the
+  recovery limit is now four attempts instead of two, with a short wait between them (0.9 s, 1.8 s, 2.7 s). The log also
+  records how many input items the request carried, so cut patterns can be compared later. Verified with a mock upstream
+  that cuts three times in a row: the fourth attempt answers and the client sees no error.
+
 ## [1.0.0] — 2026-09-12
 
 First public release of **Cider CC UwU**, a heavily patched fork of
